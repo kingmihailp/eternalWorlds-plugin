@@ -1,6 +1,7 @@
 package com.eternalworlds.portals.command;
 
 import com.eternalworlds.portals.EternalWorldsPlugin;
+import com.eternalworlds.portals.manager.SelectionManager;
 import com.eternalworlds.portals.model.Portal;
 import org.bukkit.Location;
 import org.bukkit.World;
