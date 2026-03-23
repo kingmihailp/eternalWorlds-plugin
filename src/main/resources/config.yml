@@ -1,0 +1,12 @@
+# EternalWorlds Portals – main configuration
+# Changes take effect after /portal reload
+
+# Seconds a player must wait before using the same portal again
+portal-cooldown: 3
+
+# Show a chat message when a player is teleported
+teleport-message: true
+teleport-message-text: "&aYou have been teleported to &b{world}&a!"
+
+# Allow players without admin permission to travel through portals
+allow-player-use: true
