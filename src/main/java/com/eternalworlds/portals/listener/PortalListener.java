@@ -3,6 +3,7 @@ package com.eternalworlds.portals.listener;
 import com.eternalworlds.portals.EternalWorldsPlugin;
 import com.eternalworlds.portals.manager.SelectionManager;
 import com.eternalworlds.portals.model.Portal;
+import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
@@ -96,12 +97,19 @@ public class PortalListener implements Listener {
                 portal.getDestYaw(), portal.getDestPitch());
 
         player.teleportAsync(destination).thenAccept(success -> {
-            if (success && plugin.getConfig().getBoolean("teleport-message", true)) {
+            if (!success) return;
+
+            if (plugin.getConfig().getBoolean("teleport-message", true)) {
                 String msg = plugin.getConfig()
                         .getString("teleport-message-text", "&aYou have been teleported to &b{world}&a!")
                         .replace("{world}", portal.getDestinationWorld())
                         .replace("&", "§");
                 player.sendMessage(msg);
+            }
+
+            GameMode gm = plugin.getWorldConfigManager().getGameMode(portal.getDestinationWorld());
+            if (gm != null) {
+                player.setGameMode(gm);
             }
         });
     }

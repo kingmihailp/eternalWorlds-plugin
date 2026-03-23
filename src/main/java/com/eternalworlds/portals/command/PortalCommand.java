@@ -3,6 +3,7 @@ package com.eternalworlds.portals.command;
 import com.eternalworlds.portals.EternalWorldsPlugin;
 import com.eternalworlds.portals.manager.SelectionManager;
 import com.eternalworlds.portals.model.Portal;
+import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.command.Command;
@@ -21,7 +22,11 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> SUBCOMMANDS = Arrays.asList(
             "create", "delete", "enable", "disable", "toggle",
-            "list", "info", "wand", "setdest", "loadworld", "reload"
+            "list", "info", "wand", "setdest", "loadworld", "reload", "worldgamemode"
+    );
+
+    private static final List<String> GAMEMODE_VALUES = Arrays.asList(
+            "survival", "creative", "adventure", "spectator", "none"
     );
 
     private final EternalWorldsPlugin plugin;
@@ -55,9 +60,10 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             case "info"      -> cmdInfo(sender, args);
             case "wand"      -> cmdWand(sender);
             case "setdest"   -> cmdSetDest(sender, args);
-            case "loadworld" -> cmdLoadWorld(sender, args);
-            case "reload"    -> cmdReload(sender);
-            default          -> { sendHelp(sender); yield true; }
+            case "loadworld"      -> cmdLoadWorld(sender, args);
+            case "reload"         -> cmdReload(sender);
+            case "worldgamemode"  -> cmdWorldGameMode(sender, args);
+            default               -> { sendHelp(sender); yield true; }
         };
     }
 
@@ -273,10 +279,41 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
+    // /portal worldgamemode <worldName> <survival|creative|adventure|spectator|none>
+    private boolean cmdWorldGameMode(CommandSender sender, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage("§cUsage: /portal worldgamemode <worldName> <survival|creative|adventure|spectator|none>");
+            return true;
+        }
+        String worldName = args[1];
+        String modeStr   = args[2].toLowerCase();
+
+        if (modeStr.equals("none")) {
+            plugin.getWorldConfigManager().removeGameMode(worldName);
+            sender.sendMessage("§a[Portals] Removed default gamemode for world §e" + worldName + "§a.");
+            return true;
+        }
+
+        GameMode gm;
+        try {
+            gm = GameMode.valueOf(modeStr.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            sender.sendMessage("§cUnknown gamemode: §e" + modeStr);
+            sender.sendMessage("§7Valid: §fsurvival, creative, adventure, spectator, none");
+            return true;
+        }
+
+        plugin.getWorldConfigManager().setGameMode(worldName, gm);
+        sender.sendMessage("§a[Portals] Default gamemode for world §e" + worldName
+                + " §aset to §b" + gm.name() + "§a.");
+        return true;
+    }
+
     // /portal reload
     private boolean cmdReload(CommandSender sender) {
         plugin.reloadConfig();
         plugin.getPortalManager().loadPortals();
+        plugin.getWorldConfigManager().load();
         sender.sendMessage("§a[Portals] Configuration and portals reloaded.");
         return true;
     }
@@ -295,6 +332,7 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("§e/portal list §7– List all portals");
         sender.sendMessage("§e/portal info <name> §7– Show portal details");
         sender.sendMessage("§e/portal loadworld <worldName> §7– Load a world from the server folder");
+        sender.sendMessage("§e/portal worldgamemode <world> <mode> §7– Set default gamemode for a world (none to remove)");
         sender.sendMessage("§e/portal reload §7– Reload config and portals");
     }
 
@@ -329,7 +367,14 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
                     List<String> worlds = plugin.getWorldManager().listUnloadedWorlds();
                     StringUtil.copyPartialMatches(args[1], worlds, completions);
                 }
+                case "worldgamemode" -> {
+                    List<String> allWorlds = new ArrayList<>(plugin.getWorldManager().listLoadedWorlds());
+                    allWorlds.addAll(plugin.getWorldManager().listUnloadedWorlds());
+                    StringUtil.copyPartialMatches(args[1], allWorlds, completions);
+                }
             }
+        } else if (args.length == 3 && args[0].equalsIgnoreCase("worldgamemode")) {
+            StringUtil.copyPartialMatches(args[2], GAMEMODE_VALUES, completions);
         } else if (args.length == 3 && args[0].equalsIgnoreCase("create")) {
             // destination world: suggest loaded + unloaded worlds
             List<String> all = new ArrayList<>(plugin.getWorldManager().listLoadedWorlds());
