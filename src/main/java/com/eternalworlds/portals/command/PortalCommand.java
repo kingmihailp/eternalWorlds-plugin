@@ -30,7 +30,7 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             "setportaldelay", "stopportaldelay",
             "setrandomplayerpoint", "clearrandompoints",
             "setwinnersdest", "setmessage", "setcleaningworld",
-            "setworldleavable", "setportaldynamicdelay"
+            "setworldleavable", "setportaldynamicdelay", "stopdynamicdelay"
     );
 
     private static final List<String> MESSAGE_TYPES = Arrays.asList("open", "close", "end");
@@ -90,6 +90,7 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             case "setcleaningworld"      -> cmdSetCleaningWorld(sender, args);
             case "setworldleavable"      -> cmdSetWorldLeavable(sender, args);
             case "setportaldynamicdelay" -> cmdSetPortalDynamicDelay(sender, args);
+            case "stopdynamicdelay"      -> cmdStopDynamicDelay(sender, args);
             default                      -> { sendHelp(sender); yield true; }
         };
     }
@@ -706,6 +707,22 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
+    // /portal stopdynamicdelay <portalName>
+    private boolean cmdStopDynamicDelay(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            sender.sendMessage("§cUsage: /portal stopdynamicdelay <portalName>");
+            return true;
+        }
+        String portalName = args[1];
+        if (!plugin.getDynamicDelayManager().hasDynamic(portalName)) {
+            sender.sendMessage("§cPortal §e" + portalName + " §cdoes not have dynamic delay configured.");
+            return true;
+        }
+        plugin.getDynamicDelayManager().stopDynamic(portalName);
+        sender.sendMessage("§a[Portals] Dynamic delay removed for portal §e" + portalName + "§a.");
+        return true;
+    }
+
     // /portal reload
     private boolean cmdReload(CommandSender sender) {
         plugin.reloadConfig();
@@ -746,6 +763,7 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("§e/portal setcleaningworld <world> <true|false> §7– Clean a world (entities+blocks, r=800) when game ends");
         sender.sendMessage("§e/portal setworldleavable <sourceWorld> <targetWorld> §7– Teleport players to targetWorld whenever they leave sourceWorld");
         sender.sendMessage("§e/portal setportaldynamicdelay <portal> <countdownSec> <gameSec> <winnersWorld> §7– Dynamic mode: countdown then game for gameSec; last survivor wins");
+        sender.sendMessage("§e/portal stopdynamicdelay <portal> §7– Remove dynamic delay mode from portal");
         sender.sendMessage("§e/portal reload §7– Reload config and portals");
     }
 
@@ -797,6 +815,13 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
                     List<String> portalNames2 = plugin.getPortalManager().getAllPortals()
                             .stream().map(Portal::getName).toList();
                     StringUtil.copyPartialMatches(args[1], portalNames2, completions);
+                }
+                case "stopdynamicdelay" -> {
+                    List<String> dynamicPortals = plugin.getPortalManager().getAllPortals()
+                            .stream().map(Portal::getName)
+                            .filter(n -> plugin.getDynamicDelayManager().hasDynamic(n))
+                            .toList();
+                    StringUtil.copyPartialMatches(args[1], dynamicPortals, completions);
                 }
                 case "setworldleavable" -> {
                     List<String> allWorlds = new ArrayList<>(plugin.getWorldManager().listLoadedWorlds());
