@@ -21,14 +21,19 @@ import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.inventory.EquipmentSlot;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 public class PortalListener implements Listener {
 
     private final EternalWorldsPlugin plugin;
+
     /** Tracks when each player last used a portal (epoch ms). */
-    private final Map<UUID, Long> cooldowns = new HashMap<>();
+    private final Map<UUID, Long> portalCooldowns     = new HashMap<>();
+    /** Prevents repeated elimination triggers while falling. */
+    private final Set<UUID>       eliminationPending  = new HashSet<>();
 
     public PortalListener(EternalWorldsPlugin plugin) {
         this.plugin = plugin;
@@ -45,8 +50,8 @@ public class PortalListener implements Listener {
         if (!player.hasPermission("eternalworlds.portal.admin")) return;
         if (event.getClickedBlock() == null) return;
 
-        Location loc = event.getClickedBlock().getLocation();
-        Action action = event.getAction();
+        Location loc    = event.getClickedBlock().getLocation();
+        Action   action = event.getAction();
 
         if (action == Action.LEFT_CLICK_BLOCK) {
             plugin.getSelectionManager().setPos1(player, loc);
@@ -57,7 +62,7 @@ public class PortalListener implements Listener {
         }
     }
 
-    // ---- Portal teleportation ----
+    // ---- Portal teleportation + Y-level elimination ----
 
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
     public void onPlayerMove(PlayerMoveEvent event) {
@@ -65,11 +70,38 @@ public class PortalListener implements Listener {
         Location to   = event.getTo();
         if (to == null) return;
 
+        Player player = event.getPlayer();
+
+        // -- Y-level elimination check (only when Y actually changes) --
+        if (from.getBlockY() != to.getBlockY() && !eliminationPending.contains(player.getUniqueId())) {
+            WorldConfigManager.EliminationConfig ec =
+                    plugin.getWorldConfigManager().getEliminationConfig(to.getWorld().getName());
+            if (ec != null && to.getY() <= ec.yLevel()) {
+                eliminationPending.add(player.getUniqueId());
+                World targetWorld = plugin.getWorldManager().loadWorld(ec.targetWorld());
+                if (targetWorld != null) {
+                    WorldConfigManager.WorldSpawn spawn =
+                            plugin.getWorldConfigManager().getSpawn(ec.targetWorld());
+                    Location dest = spawn != null
+                            ? spawn.toLocation(targetWorld)
+                            : targetWorld.getSpawnLocation();
+                    player.teleportAsync(dest).thenAccept(success -> {
+                        eliminationPending.remove(player.getUniqueId());
+                        if (success) {
+                            player.sendMessage("§c[Portals] You have been eliminated!");
+                        }
+                    });
+                } else {
+                    eliminationPending.remove(player.getUniqueId());
+                }
+                return;
+            }
+        }
+
+        // -- Portal entry check (only when block position changes) --
         if (from.getBlockX() == to.getBlockX()
                 && from.getBlockY() == to.getBlockY()
                 && from.getBlockZ() == to.getBlockZ()) return;
-
-        Player player = event.getPlayer();
 
         if (!plugin.getConfig().getBoolean("allow-player-use", true)
                 && !player.hasPermission("eternalworlds.portal.admin")) return;
@@ -80,70 +112,73 @@ public class PortalListener implements Listener {
         if (portal == null) return;
 
         // Cooldown check
-        int cooldownSec = plugin.getConfig().getInt("portal-cooldown", 3);
-        long now = System.currentTimeMillis();
-        Long lastUsed = cooldowns.get(player.getUniqueId());
+        int  cooldownSec = plugin.getConfig().getInt("portal-cooldown", 3);
+        long now         = System.currentTimeMillis();
+        Long lastUsed    = portalCooldowns.get(player.getUniqueId());
         if (lastUsed != null && now - lastUsed < cooldownSec * 1000L) return;
-        cooldowns.put(player.getUniqueId(), now);
+        portalCooldowns.put(player.getUniqueId(), now);
 
-        // Ensure destination world is loaded
-        World destWorld = plugin.getWorldManager().loadWorld(portal.getDestinationWorld());
-        if (destWorld == null) {
-            player.sendMessage("§c[Portals] Destination world '" + portal.getDestinationWorld()
-                    + "' could not be loaded.");
-            return;
+        // Determine destination — prefer random spawn points if configured
+        Location destination;
+
+        if (plugin.getRandomPointManager().hasPoints(portal.getName())) {
+            Location randomPoint = plugin.getRandomPointManager()
+                    .getRandomAvailablePoint(portal.getName());
+            if (randomPoint == null) {
+                // All points occupied — portal is at capacity
+                player.sendMessage("§c[Portals] All spawn points are occupied. Please wait.");
+                return;
+            }
+            destination = randomPoint;
+        } else {
+            World destWorld = plugin.getWorldManager().loadWorld(portal.getDestinationWorld());
+            if (destWorld == null) {
+                player.sendMessage("§c[Portals] Destination world '"
+                        + portal.getDestinationWorld() + "' could not be loaded.");
+                return;
+            }
+            destination = new Location(destWorld,
+                    portal.getDestX(), portal.getDestY(), portal.getDestZ(),
+                    portal.getDestYaw(), portal.getDestPitch());
         }
-
-        Location destination = new Location(destWorld,
-                portal.getDestX(), portal.getDestY(), portal.getDestZ(),
-                portal.getDestYaw(), portal.getDestPitch());
 
         player.teleportAsync(destination).thenAccept(success -> {
             if (!success) return;
             if (plugin.getConfig().getBoolean("teleport-message", true)) {
                 String msg = plugin.getConfig()
-                        .getString("teleport-message-text", "&aYou have been teleported to &b{world}&a!")
+                        .getString("teleport-message-text",
+                                "&aYou have been teleported to &b{world}&a!")
                         .replace("{world}", portal.getDestinationWorld())
                         .replace("&", "§");
                 player.sendMessage(msg);
             }
-            // Game mode is applied by PlayerChangedWorldEvent
+            // Game mode and inventory clear are handled by PlayerChangedWorldEvent
         });
     }
 
-    // ---- Per-world game mode & spawn ----
+    // ---- Per-world game mode & inventory clear on world change ----
 
-    /**
-     * Apply the world's default game mode when a player joins the server.
-     */
     @EventHandler(priority = EventPriority.NORMAL)
     public void onPlayerJoin(PlayerJoinEvent event) {
         applyWorldSettings(event.getPlayer(), event.getPlayer().getWorld().getName());
     }
 
-    /**
-     * Apply the world's default game mode whenever a player switches worlds
-     * (covers portal teleports, /portal loadworld, etc.).
-     */
     @EventHandler(priority = EventPriority.NORMAL)
     public void onPlayerChangedWorld(PlayerChangedWorldEvent event) {
         applyWorldSettings(event.getPlayer(), event.getPlayer().getWorld().getName());
     }
 
-    /**
-     * Override the respawn location if the world has a custom spawn point set.
-     */
+    // ---- Custom respawn location ----
+
     @EventHandler(priority = EventPriority.HIGH)
     public void onPlayerRespawn(PlayerRespawnEvent event) {
-        // Don't override bed/anchor respawns — they represent an explicit player choice
         if (event.isBedSpawn() || event.isAnchorSpawn()) return;
 
         String worldName = event.getPlayer().getWorld().getName();
         WorldConfigManager.WorldSpawn spawn = plugin.getWorldConfigManager().getSpawn(worldName);
         if (spawn == null) return;
 
-        World world = event.getPlayer().getWorld();
-        event.setRespawnLocation(spawn.toLocation(world));
+        event.setRespawnLocation(spawn.toLocation(event.getPlayer().getWorld()));
     }
 
     // ---- Per-world PvP ----
@@ -152,7 +187,6 @@ public class PortalListener implements Listener {
     public void onEntityDamage(EntityDamageByEntityEvent event) {
         if (!(event.getEntity() instanceof Player victim)) return;
 
-        // Resolve the actual attacker (direct hit or projectile shooter)
         Player attacker = null;
         if (event.getDamager() instanceof Player p) {
             attacker = p;
@@ -162,8 +196,7 @@ public class PortalListener implements Listener {
         }
         if (attacker == null) return;
 
-        String worldName = victim.getWorld().getName();
-        Boolean pvp = plugin.getWorldConfigManager().getPvp(worldName);
+        Boolean pvp = plugin.getWorldConfigManager().getPvp(victim.getWorld().getName());
         if (pvp != null && !pvp) {
             event.setCancelled(true);
             attacker.sendMessage("§c[Portals] PvP is disabled in this world.");
@@ -174,9 +207,7 @@ public class PortalListener implements Listener {
 
     private void applyWorldSettings(Player player, String worldName) {
         GameMode gm = plugin.getWorldConfigManager().getGameMode(worldName);
-        if (gm != null) {
-            player.setGameMode(gm);
-        }
+        if (gm != null) player.setGameMode(gm);
 
         if (plugin.getWorldConfigManager().isClearInventory(worldName)) {
             player.getInventory().clear();

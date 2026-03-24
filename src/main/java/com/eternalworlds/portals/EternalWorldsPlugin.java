@@ -2,7 +2,10 @@ package com.eternalworlds.portals;
 
 import com.eternalworlds.portals.command.PortalCommand;
 import com.eternalworlds.portals.listener.PortalListener;
+import com.eternalworlds.portals.manager.ItemRandomizationManager;
 import com.eternalworlds.portals.manager.PortalManager;
+import com.eternalworlds.portals.manager.PortalSchedulerManager;
+import com.eternalworlds.portals.manager.RandomPointManager;
 import com.eternalworlds.portals.manager.SelectionManager;
 import com.eternalworlds.portals.manager.WorldConfigManager;
 import com.eternalworlds.portals.manager.WorldManager;
@@ -10,19 +13,25 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 public final class EternalWorldsPlugin extends JavaPlugin {
 
-    private PortalManager portalManager;
-    private WorldManager worldManager;
-    private SelectionManager selectionManager;
-    private WorldConfigManager worldConfigManager;
+    private PortalManager          portalManager;
+    private WorldManager           worldManager;
+    private SelectionManager       selectionManager;
+    private WorldConfigManager     worldConfigManager;
+    private ItemRandomizationManager itemRandomizationManager;
+    private RandomPointManager     randomPointManager;
+    private PortalSchedulerManager portalSchedulerManager;
 
     @Override
     public void onEnable() {
         saveDefaultConfig();
 
-        this.worldManager       = new WorldManager(this);
-        this.selectionManager   = new SelectionManager();
-        this.worldConfigManager = new WorldConfigManager(this);
-        this.portalManager      = new PortalManager(this);
+        this.worldManager              = new WorldManager(this);
+        this.selectionManager          = new SelectionManager();
+        this.worldConfigManager        = new WorldConfigManager(this);
+        this.portalManager             = new PortalManager(this);
+        this.itemRandomizationManager  = new ItemRandomizationManager(this);
+        this.randomPointManager        = new RandomPointManager(this);
+        this.portalSchedulerManager    = new PortalSchedulerManager(this);
         portalManager.loadPortals();
 
         PortalCommand executor = new PortalCommand(this);
@@ -37,14 +46,17 @@ public final class EternalWorldsPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        if (portalManager != null) {
-            portalManager.savePortals();
-        }
+        portalSchedulerManager.cancelAll();
+        itemRandomizationManager.cancelAll();
+        if (portalManager != null) portalManager.savePortals();
         getLogger().info("EternalWorlds Portals disabled.");
     }
 
-    public PortalManager       getPortalManager()       { return portalManager; }
-    public WorldManager        getWorldManager()        { return worldManager; }
-    public SelectionManager    getSelectionManager()    { return selectionManager; }
-    public WorldConfigManager  getWorldConfigManager()  { return worldConfigManager; }
+    public PortalManager           getPortalManager()           { return portalManager; }
+    public WorldManager            getWorldManager()            { return worldManager; }
+    public SelectionManager        getSelectionManager()        { return selectionManager; }
+    public WorldConfigManager      getWorldConfigManager()      { return worldConfigManager; }
+    public ItemRandomizationManager getItemRandomizationManager() { return itemRandomizationManager; }
+    public RandomPointManager      getRandomPointManager()      { return randomPointManager; }
+    public PortalSchedulerManager  getPortalSchedulerManager()  { return portalSchedulerManager; }
 }

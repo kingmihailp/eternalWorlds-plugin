@@ -24,12 +24,15 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
     private static final List<String> SUBCOMMANDS = Arrays.asList(
             "create", "delete", "enable", "disable", "toggle",
             "list", "info", "wand", "setdest", "setspawn", "travel",
-            "loadworld", "reload", "worldgamemode", "worldpvp", "worldclearinv"
+            "loadworld", "reload",
+            "worldgamemode", "worldpvp", "worldclearinv",
+            "worlditemrandomization", "seteliminationylevel",
+            "setportaldelay", "stopportaldelay",
+            "setrandomplayerpoint", "clearrandompoints"
     );
 
-    private static final List<String> PVP_VALUES      = Arrays.asList("on", "off");
-    private static final List<String> BOOL_VALUES     = Arrays.asList("true", "false");
-
+    private static final List<String> PVP_VALUES  = Arrays.asList("on", "off");
+    private static final List<String> BOOL_VALUES  = Arrays.asList("true", "false");
     private static final List<String> GAMEMODE_VALUES = Arrays.asList(
             "survival", "creative", "adventure", "spectator", "none"
     );
@@ -69,10 +72,16 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             case "travel"         -> cmdTravel(sender, args);
             case "loadworld"      -> cmdLoadWorld(sender, args);
             case "reload"         -> cmdReload(sender);
-            case "worldgamemode"  -> cmdWorldGameMode(sender, args);
-            case "worldpvp"       -> cmdWorldPvp(sender, args);
-            case "worldclearinv"  -> cmdWorldClearInv(sender, args);
-            default               -> { sendHelp(sender); yield true; }
+            case "worldgamemode"         -> cmdWorldGameMode(sender, args);
+            case "worldpvp"              -> cmdWorldPvp(sender, args);
+            case "worldclearinv"         -> cmdWorldClearInv(sender, args);
+            case "worlditemrandomization"-> cmdWorldItemRandomization(sender, args);
+            case "seteliminationylevel"  -> cmdSetEliminationYLevel(sender, args);
+            case "setportaldelay"        -> cmdSetPortalDelay(sender, args);
+            case "stopportaldelay"       -> cmdStopPortalDelay(sender, args);
+            case "setrandomplayerpoint"  -> cmdSetRandomPlayerPoint(sender, args);
+            case "clearrandompoints"     -> cmdClearRandomPoints(sender, args);
+            default                      -> { sendHelp(sender); yield true; }
         };
     }
 
@@ -428,6 +437,132 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
+    // /portal setportaldelay <portalName> <enableSeconds> <disableSeconds>
+    private boolean cmdSetPortalDelay(CommandSender sender, String[] args) {
+        if (args.length < 4) {
+            sender.sendMessage("§cUsage: /portal setportaldelay <portalName> <enableSeconds> <disableSeconds>");
+            return true;
+        }
+        String portalName = args[1];
+        if (plugin.getPortalManager().getPortal(portalName) == null) {
+            sender.sendMessage("§cPortal §e" + portalName + " §cnot found.");
+            return true;
+        }
+        int enableSec, disableSec;
+        try {
+            enableSec  = Integer.parseInt(args[2]);
+            disableSec = Integer.parseInt(args[3]);
+        } catch (NumberFormatException e) {
+            sender.sendMessage("§cSeconds must be whole numbers.");
+            return true;
+        }
+        if (enableSec <= 0 || disableSec <= 0) {
+            sender.sendMessage("§cSeconds must be greater than zero.");
+            return true;
+        }
+        plugin.getPortalSchedulerManager().startCycle(portalName, enableSec, disableSec);
+        sender.sendMessage("§a[Portals] Portal §e" + portalName
+                + " §acycle started: §b" + enableSec + "s §aopen, §c" + disableSec + "s §aclosed.");
+        return true;
+    }
+
+    // /portal stopportaldelay <portalName>
+    private boolean cmdStopPortalDelay(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            sender.sendMessage("§cUsage: /portal stopportaldelay <portalName>");
+            return true;
+        }
+        String portalName = args[1];
+        if (!plugin.getPortalSchedulerManager().isRunning(portalName)) {
+            sender.sendMessage("§ePortal §b" + portalName + " §ehas no active cycle.");
+            return true;
+        }
+        plugin.getPortalSchedulerManager().stopCycle(portalName);
+        sender.sendMessage("§a[Portals] Cycle stopped for portal §e" + portalName + "§a.");
+        return true;
+    }
+
+    // /portal worlditemrandomization <worldName> <on|off>
+    private boolean cmdWorldItemRandomization(CommandSender sender, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage("§cUsage: /portal worlditemrandomization <worldName> <on|off>");
+            return true;
+        }
+        String worldName = args[1];
+        String value     = args[2].toLowerCase();
+        if (!value.equals("on") && !value.equals("off")) {
+            sender.sendMessage("§cUse §fon §cor §foff§c.");
+            return true;
+        }
+        boolean enable = value.equals("on");
+        plugin.getWorldConfigManager().setItemRandomizationEnabled(worldName, enable);
+        if (enable) {
+            plugin.getItemRandomizationManager().startRandomization(worldName);
+            sender.sendMessage("§a[Portals] Item randomization §aenabled §afor world §e" + worldName + "§a.");
+        } else {
+            plugin.getItemRandomizationManager().stopRandomization(worldName);
+            sender.sendMessage("§a[Portals] Item randomization §cdisabled §afor world §e" + worldName + "§a.");
+        }
+        return true;
+    }
+
+    // /portal setrandomplayerpoint <portalName>
+    private boolean cmdSetRandomPlayerPoint(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage("§cOnly players can set random player points.");
+            return true;
+        }
+        if (args.length < 2) {
+            player.sendMessage("§cUsage: /portal setrandomplayerpoint <portalName>");
+            return true;
+        }
+        String portalName = args[1];
+        if (plugin.getPortalManager().getPortal(portalName) == null) {
+            player.sendMessage("§cPortal §e" + portalName + " §cnot found.");
+            return true;
+        }
+        plugin.getRandomPointManager().addPoint(portalName, player.getLocation());
+        int total = plugin.getRandomPointManager().getPointCount(portalName);
+        player.sendMessage("§a[Portals] Random point #" + total + " added for portal §e" + portalName
+                + " §7(" + (int) player.getLocation().getX()
+                + ", " + (int) player.getLocation().getY()
+                + ", " + (int) player.getLocation().getZ() + ")§7.");
+        return true;
+    }
+
+    // /portal clearrandompoints <portalName>
+    private boolean cmdClearRandomPoints(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            sender.sendMessage("§cUsage: /portal clearrandompoints <portalName>");
+            return true;
+        }
+        String portalName = args[1];
+        plugin.getRandomPointManager().clearPoints(portalName);
+        sender.sendMessage("§a[Portals] All random points cleared for portal §e" + portalName + "§a.");
+        return true;
+    }
+
+    // /portal seteliminationylevel <worldName> <yLevel> <targetWorld>
+    private boolean cmdSetEliminationYLevel(CommandSender sender, String[] args) {
+        if (args.length < 4) {
+            sender.sendMessage("§cUsage: /portal seteliminationylevel <worldName> <yLevel> <targetWorld>");
+            return true;
+        }
+        String worldName   = args[1];
+        String targetWorld = args[3];
+        int yLevel;
+        try {
+            yLevel = Integer.parseInt(args[2]);
+        } catch (NumberFormatException e) {
+            sender.sendMessage("§cY level must be a whole number.");
+            return true;
+        }
+        plugin.getWorldConfigManager().setEliminationConfig(worldName, yLevel, targetWorld);
+        sender.sendMessage("§a[Portals] Elimination set for world §e" + worldName
+                + "§a: Y ≤ §b" + yLevel + " §a→ teleport to §e" + targetWorld + "§a.");
+        return true;
+    }
+
     // /portal reload
     private boolean cmdReload(CommandSender sender) {
         plugin.reloadConfig();
@@ -456,6 +591,12 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("§e/portal worldgamemode <world> <mode> §7– Set default gamemode for a world (none to remove)");
         sender.sendMessage("§e/portal worldpvp <world> <on|off> §7– Enable or disable PvP in a world");
         sender.sendMessage("§e/portal worldclearinv <world> <true|false> §7– Clear inventory on entry to a world");
+        sender.sendMessage("§e/portal worlditemrandomization <world> <on|off> §7– Give random items every 4s in a world");
+        sender.sendMessage("§e/portal setportaldelay <portal> <openSec> <closeSec> §7– Repeating open/close cycle for a portal");
+        sender.sendMessage("§e/portal stopportaldelay <portal> §7– Stop the portal open/close cycle");
+        sender.sendMessage("§e/portal setrandomplayerpoint <portal> §7– Add your position as a random spawn point for a portal");
+        sender.sendMessage("§e/portal clearrandompoints <portal> §7– Remove all random spawn points for a portal");
+        sender.sendMessage("§e/portal seteliminationylevel <world> <y> <targetWorld> §7– Teleport players below Y to another world");
         sender.sendMessage("§e/portal reload §7– Reload config and portals");
     }
 
@@ -494,10 +635,17 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
                     List<String> worlds = plugin.getWorldManager().listUnloadedWorlds();
                     StringUtil.copyPartialMatches(args[1], worlds, completions);
                 }
-                case "travel", "worldgamemode", "worldpvp", "worldclearinv" -> {
+                case "travel", "worldgamemode", "worldpvp", "worldclearinv",
+                        "worlditemrandomization", "seteliminationylevel" -> {
                     List<String> allWorlds = new ArrayList<>(plugin.getWorldManager().listLoadedWorlds());
                     allWorlds.addAll(plugin.getWorldManager().listUnloadedWorlds());
                     StringUtil.copyPartialMatches(args[1], allWorlds, completions);
+                }
+                case "setportaldelay", "stopportaldelay",
+                        "setrandomplayerpoint", "clearrandompoints" -> {
+                    List<String> portalNames2 = plugin.getPortalManager().getAllPortals()
+                            .stream().map(Portal::getName).toList();
+                    StringUtil.copyPartialMatches(args[1], portalNames2, completions);
                 }
             }
         } else if (args.length == 3 && args[0].equalsIgnoreCase("worldgamemode")) {
@@ -506,6 +654,13 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             StringUtil.copyPartialMatches(args[2], PVP_VALUES, completions);
         } else if (args.length == 3 && args[0].equalsIgnoreCase("worldclearinv")) {
             StringUtil.copyPartialMatches(args[2], BOOL_VALUES, completions);
+        } else if (args.length == 3 && args[0].equalsIgnoreCase("worlditemrandomization")) {
+            StringUtil.copyPartialMatches(args[2], PVP_VALUES, completions);
+        } else if (args.length == 4 && args[0].equalsIgnoreCase("seteliminationylevel")) {
+            // arg3 = targetWorld
+            List<String> allWorlds = new ArrayList<>(plugin.getWorldManager().listLoadedWorlds());
+            allWorlds.addAll(plugin.getWorldManager().listUnloadedWorlds());
+            StringUtil.copyPartialMatches(args[3], allWorlds, completions);
         } else if (args.length == 3 && args[0].equalsIgnoreCase("create")) {
             // destination world: suggest loaded + unloaded worlds
             List<String> all = new ArrayList<>(plugin.getWorldManager().listLoadedWorlds());
