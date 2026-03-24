@@ -12,6 +12,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
@@ -143,6 +144,30 @@ public class PortalListener implements Listener {
 
         World world = event.getPlayer().getWorld();
         event.setRespawnLocation(spawn.toLocation(world));
+    }
+
+    // ---- Per-world PvP ----
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onEntityDamage(EntityDamageByEntityEvent event) {
+        if (!(event.getEntity() instanceof Player victim)) return;
+
+        // Resolve the actual attacker (direct hit or projectile shooter)
+        Player attacker = null;
+        if (event.getDamager() instanceof Player p) {
+            attacker = p;
+        } else if (event.getDamager() instanceof org.bukkit.entity.Projectile proj
+                && proj.getShooter() instanceof Player p) {
+            attacker = p;
+        }
+        if (attacker == null) return;
+
+        String worldName = victim.getWorld().getName();
+        Boolean pvp = plugin.getWorldConfigManager().getPvp(worldName);
+        if (pvp != null && !pvp) {
+            event.setCancelled(true);
+            attacker.sendMessage("§c[Portals] PvP is disabled in this world.");
+        }
     }
 
     // ---- Internal helpers ----

@@ -19,6 +19,7 @@ import java.util.Map;
  * worlds:
  *   lobby:
  *     gamemode: ADVENTURE
+ *     pvp: false
  *     spawn:
  *       x: 0.5
  *       y: 64.0
@@ -42,6 +43,11 @@ public class WorldConfigManager {
     private final Map<String, GameMode>   worldGameModes = new HashMap<>();
     /** world name (lower-case) -> custom spawn point */
     private final Map<String, WorldSpawn> worldSpawns    = new HashMap<>();
+    /**
+     * world name (lower-case) -> pvp override.
+     * true = PvP on, false = PvP off, absent = use world's own setting.
+     */
+    private final Map<String, Boolean>    worldPvp       = new HashMap<>();
 
     public WorldConfigManager(EternalWorldsPlugin plugin) {
         this.plugin = plugin;
@@ -54,6 +60,7 @@ public class WorldConfigManager {
     public void load() {
         worldGameModes.clear();
         worldSpawns.clear();
+        worldPvp.clear();
         if (!file.exists()) return;
 
         YamlConfiguration cfg = YamlConfiguration.loadConfiguration(file);
@@ -73,6 +80,12 @@ public class WorldConfigManager {
                 }
             }
 
+            // PvP
+            String pvpPath = "worlds." + world + ".pvp";
+            if (cfg.contains(pvpPath)) {
+                worldPvp.put(key, cfg.getBoolean(pvpPath));
+            }
+
             // Spawn
             String spawnPath = "worlds." + world + ".spawn";
             if (cfg.isConfigurationSection(spawnPath)) {
@@ -87,16 +100,20 @@ public class WorldConfigManager {
     }
 
     public void save() {
-        // Collect all world names from both maps
         java.util.Set<String> worlds = new java.util.HashSet<>();
         worlds.addAll(worldGameModes.keySet());
         worlds.addAll(worldSpawns.keySet());
+        worlds.addAll(worldPvp.keySet());
 
         YamlConfiguration cfg = new YamlConfiguration();
         for (String world : worlds) {
             GameMode gm = worldGameModes.get(world);
             if (gm != null) {
                 cfg.set("worlds." + world + ".gamemode", gm.name());
+            }
+            Boolean pvp = worldPvp.get(world);
+            if (pvp != null) {
+                cfg.set("worlds." + world + ".pvp", pvp);
             }
             WorldSpawn spawn = worldSpawns.get(world);
             if (spawn != null) {
@@ -130,6 +147,25 @@ public class WorldConfigManager {
 
     public void removeGameMode(String worldName) {
         worldGameModes.remove(worldName.toLowerCase());
+        save();
+    }
+
+    // ---- PvP ----
+
+    /**
+     * Returns the PvP setting for the world: true = on, false = off, null = not overridden.
+     */
+    public Boolean getPvp(String worldName) {
+        return worldPvp.get(worldName.toLowerCase());
+    }
+
+    public void setPvp(String worldName, boolean enabled) {
+        worldPvp.put(worldName.toLowerCase(), enabled);
+        save();
+    }
+
+    public void removePvp(String worldName) {
+        worldPvp.remove(worldName.toLowerCase());
         save();
     }
 

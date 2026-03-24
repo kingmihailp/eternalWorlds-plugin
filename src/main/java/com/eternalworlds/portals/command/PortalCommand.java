@@ -22,8 +22,10 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> SUBCOMMANDS = Arrays.asList(
             "create", "delete", "enable", "disable", "toggle",
-            "list", "info", "wand", "setdest", "setspawn", "loadworld", "reload", "worldgamemode"
+            "list", "info", "wand", "setdest", "setspawn", "loadworld", "reload", "worldgamemode", "worldpvp"
     );
+
+    private static final List<String> PVP_VALUES = Arrays.asList("on", "off");
 
     private static final List<String> GAMEMODE_VALUES = Arrays.asList(
             "survival", "creative", "adventure", "spectator", "none"
@@ -64,6 +66,7 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             case "loadworld"      -> cmdLoadWorld(sender, args);
             case "reload"         -> cmdReload(sender);
             case "worldgamemode"  -> cmdWorldGameMode(sender, args);
+            case "worldpvp"       -> cmdWorldPvp(sender, args);
             default               -> { sendHelp(sender); yield true; }
         };
     }
@@ -336,6 +339,27 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
+    // /portal worldpvp <worldName> <on|off>
+    private boolean cmdWorldPvp(CommandSender sender, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage("§cUsage: /portal worldpvp <worldName> <on|off>");
+            return true;
+        }
+        String worldName = args[1];
+        String value     = args[2].toLowerCase();
+
+        if (!value.equals("on") && !value.equals("off")) {
+            sender.sendMessage("§cInvalid value: §e" + value + "§c. Use §fon §cor §foff§c.");
+            return true;
+        }
+
+        boolean pvpOn = value.equals("on");
+        plugin.getWorldConfigManager().setPvp(worldName, pvpOn);
+        sender.sendMessage("§a[Portals] PvP for world §e" + worldName
+                + (pvpOn ? " §aenabled." : " §cdisabled."));
+        return true;
+    }
+
     // /portal reload
     private boolean cmdReload(CommandSender sender) {
         plugin.reloadConfig();
@@ -361,6 +385,7 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("§e/portal info <name> §7– Show portal details");
         sender.sendMessage("§e/portal loadworld <worldName> §7– Load a world from the server folder");
         sender.sendMessage("§e/portal worldgamemode <world> <mode> §7– Set default gamemode for a world (none to remove)");
+        sender.sendMessage("§e/portal worldpvp <world> <on|off> §7– Enable or disable PvP in a world");
         sender.sendMessage("§e/portal reload §7– Reload config and portals");
     }
 
@@ -399,7 +424,7 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
                     List<String> worlds = plugin.getWorldManager().listUnloadedWorlds();
                     StringUtil.copyPartialMatches(args[1], worlds, completions);
                 }
-                case "worldgamemode" -> {
+                case "worldgamemode", "worldpvp" -> {
                     List<String> allWorlds = new ArrayList<>(plugin.getWorldManager().listLoadedWorlds());
                     allWorlds.addAll(plugin.getWorldManager().listUnloadedWorlds());
                     StringUtil.copyPartialMatches(args[1], allWorlds, completions);
@@ -407,6 +432,8 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             }
         } else if (args.length == 3 && args[0].equalsIgnoreCase("worldgamemode")) {
             StringUtil.copyPartialMatches(args[2], GAMEMODE_VALUES, completions);
+        } else if (args.length == 3 && args[0].equalsIgnoreCase("worldpvp")) {
+            StringUtil.copyPartialMatches(args[2], PVP_VALUES, completions);
         } else if (args.length == 3 && args[0].equalsIgnoreCase("create")) {
             // destination world: suggest loaded + unloaded worlds
             List<String> all = new ArrayList<>(plugin.getWorldManager().listLoadedWorlds());
