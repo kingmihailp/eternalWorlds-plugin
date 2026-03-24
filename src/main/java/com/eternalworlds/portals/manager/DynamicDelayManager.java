@@ -147,7 +147,10 @@ public class DynamicDelayManager {
 
         BukkitTask pollTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
             if (phases.get(key) != Phase.WAITING) return;
-            if (plugin.getServer().getOnlinePlayers().size() >= 2) {
+            Portal p = plugin.getPortalManager().getPortal(key);
+            if (p == null) return;
+            World destWorld = plugin.getServer().getWorld(p.getDestinationWorld());
+            if (destWorld != null && destWorld.getPlayers().size() >= 2) {
                 beginGame(key);
             }
         }, POLL_TICKS, POLL_TICKS);
