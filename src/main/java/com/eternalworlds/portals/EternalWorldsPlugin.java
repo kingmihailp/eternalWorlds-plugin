@@ -3,6 +3,7 @@ package com.eternalworlds.portals;
 import com.eternalworlds.portals.command.PortalCommand;
 import com.eternalworlds.portals.listener.PortalListener;
 import com.eternalworlds.portals.manager.ItemRandomizationManager;
+import com.eternalworlds.portals.manager.MinigameConfigManager;
 import com.eternalworlds.portals.manager.PortalManager;
 import com.eternalworlds.portals.manager.PortalSchedulerManager;
 import com.eternalworlds.portals.manager.RandomPointManager;
@@ -13,13 +14,14 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 public final class EternalWorldsPlugin extends JavaPlugin {
 
-    private PortalManager          portalManager;
-    private WorldManager           worldManager;
-    private SelectionManager       selectionManager;
-    private WorldConfigManager     worldConfigManager;
+    private PortalManager            portalManager;
+    private WorldManager             worldManager;
+    private SelectionManager         selectionManager;
+    private WorldConfigManager       worldConfigManager;
     private ItemRandomizationManager itemRandomizationManager;
-    private RandomPointManager     randomPointManager;
-    private PortalSchedulerManager portalSchedulerManager;
+    private RandomPointManager       randomPointManager;
+    private MinigameConfigManager    minigameConfigManager;
+    private PortalSchedulerManager   portalSchedulerManager;
 
     @Override
     public void onEnable() {
@@ -31,6 +33,7 @@ public final class EternalWorldsPlugin extends JavaPlugin {
         this.portalManager             = new PortalManager(this);
         this.itemRandomizationManager  = new ItemRandomizationManager(this);
         this.randomPointManager        = new RandomPointManager(this);
+        this.minigameConfigManager     = new MinigameConfigManager(this);
         this.portalSchedulerManager    = new PortalSchedulerManager(this);
         portalManager.loadPortals();
 
@@ -52,11 +55,12 @@ public final class EternalWorldsPlugin extends JavaPlugin {
         getLogger().info("EternalWorlds Portals disabled.");
     }
 
-    public PortalManager           getPortalManager()           { return portalManager; }
-    public WorldManager            getWorldManager()            { return worldManager; }
-    public SelectionManager        getSelectionManager()        { return selectionManager; }
-    public WorldConfigManager      getWorldConfigManager()      { return worldConfigManager; }
-    public ItemRandomizationManager getItemRandomizationManager() { return itemRandomizationManager; }
-    public RandomPointManager      getRandomPointManager()      { return randomPointManager; }
-    public PortalSchedulerManager  getPortalSchedulerManager()  { return portalSchedulerManager; }
+    public PortalManager             getPortalManager()             { return portalManager; }
+    public WorldManager              getWorldManager()              { return worldManager; }
+    public SelectionManager          getSelectionManager()          { return selectionManager; }
+    public WorldConfigManager        getWorldConfigManager()        { return worldConfigManager; }
+    public ItemRandomizationManager  getItemRandomizationManager()  { return itemRandomizationManager; }
+    public RandomPointManager        getRandomPointManager()        { return randomPointManager; }
+    public MinigameConfigManager     getMinigameConfigManager()     { return minigameConfigManager; }
+    public PortalSchedulerManager    getPortalSchedulerManager()    { return portalSchedulerManager; }
 }

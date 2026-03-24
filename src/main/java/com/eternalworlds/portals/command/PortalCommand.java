@@ -28,8 +28,11 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             "worldgamemode", "worldpvp", "worldclearinv",
             "worlditemrandomization", "seteliminationylevel",
             "setportaldelay", "stopportaldelay",
-            "setrandomplayerpoint", "clearrandompoints"
+            "setrandomplayerpoint", "clearrandompoints",
+            "setwinnersdest", "setmessage"
     );
+
+    private static final List<String> MESSAGE_TYPES = Arrays.asList("open", "close", "end");
 
     private static final List<String> PVP_VALUES  = Arrays.asList("on", "off");
     private static final List<String> BOOL_VALUES  = Arrays.asList("true", "false");
@@ -81,6 +84,8 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             case "stopportaldelay"       -> cmdStopPortalDelay(sender, args);
             case "setrandomplayerpoint"  -> cmdSetRandomPlayerPoint(sender, args);
             case "clearrandompoints"     -> cmdClearRandomPoints(sender, args);
+            case "setwinnersdest"        -> cmdSetWinnersDest(sender, args);
+            case "setmessage"            -> cmdSetMessage(sender, args);
             default                      -> { sendHelp(sender); yield true; }
         };
     }
@@ -563,11 +568,62 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
+    // /portal setwinnersdest <portalName> <worldName>
+    private boolean cmdSetWinnersDest(CommandSender sender, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage("§cUsage: /portal setwinnersdest <portalName> <worldName>");
+            return true;
+        }
+        String portalName = args[1];
+        String worldName  = args[2];
+        if (plugin.getPortalManager().getPortal(portalName) == null) {
+            sender.sendMessage("§cPortal §e" + portalName + " §cnot found.");
+            return true;
+        }
+        plugin.getMinigameConfigManager().setWinnersDest(portalName, worldName);
+        sender.sendMessage("§a[Portals] Winners destination for portal §e" + portalName
+                + " §aset to world §b" + worldName + "§a.");
+        return true;
+    }
+
+    // /portal setmessage <portalName> <open|close|end> <message...>
+    //   Supports: &a, &b, &#RRGGBB, #RRGGBB  — stored as-is, parsed on broadcast.
+    //   Placeholders: {portal}, {world}
+    private boolean cmdSetMessage(CommandSender sender, String[] args) {
+        if (args.length < 4) {
+            sender.sendMessage("§cUsage: /portal setmessage <portalName> <open|close|end> <message...>");
+            sender.sendMessage("§7Supports &-codes, &#RRGGBB hex and #RRGGBB hex. Placeholders: {portal}, {world}");
+            return true;
+        }
+        String portalName = args[1];
+        String type       = args[2].toLowerCase();
+        if (plugin.getPortalManager().getPortal(portalName) == null) {
+            sender.sendMessage("§cPortal §e" + portalName + " §cnot found.");
+            return true;
+        }
+        if (!MESSAGE_TYPES.contains(type)) {
+            sender.sendMessage("§cUnknown message type: §e" + type + "§c. Use §fopen§c, §fclose §cor §fend§c.");
+            return true;
+        }
+        // Join remaining args as the message (preserves spaces)
+        String message = String.join(" ", Arrays.copyOfRange(args, 3, args.length));
+
+        switch (type) {
+            case "open"  -> plugin.getMinigameConfigManager().setOpenMessage(portalName, message);
+            case "close" -> plugin.getMinigameConfigManager().setCloseMessage(portalName, message);
+            case "end"   -> plugin.getMinigameConfigManager().setEndMessage(portalName, message);
+        }
+        sender.sendMessage("§a[Portals] " + type.substring(0, 1).toUpperCase() + type.substring(1)
+                + " message for portal §e" + portalName + " §aset.");
+        return true;
+    }
+
     // /portal reload
     private boolean cmdReload(CommandSender sender) {
         plugin.reloadConfig();
         plugin.getPortalManager().loadPortals();
         plugin.getWorldConfigManager().load();
+        plugin.getMinigameConfigManager().load();
         sender.sendMessage("§a[Portals] Configuration and portals reloaded.");
         return true;
     }
@@ -597,6 +653,8 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("§e/portal setrandomplayerpoint <portal> §7– Add your position as a random spawn point for a portal");
         sender.sendMessage("§e/portal clearrandompoints <portal> §7– Remove all random spawn points for a portal");
         sender.sendMessage("§e/portal seteliminationylevel <world> <y> <targetWorld> §7– Teleport players below Y to another world");
+        sender.sendMessage("§e/portal setwinnersdest <portal> <world> §7– Set world where players are sent after the game ends");
+        sender.sendMessage("§e/portal setmessage <portal> <open|close|end> <msg> §7– Set a portal message (hex: &#RRGGBB, {portal}, {world})");
         sender.sendMessage("§e/portal reload §7– Reload config and portals");
     }
 
@@ -642,7 +700,8 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
                     StringUtil.copyPartialMatches(args[1], allWorlds, completions);
                 }
                 case "setportaldelay", "stopportaldelay",
-                        "setrandomplayerpoint", "clearrandompoints" -> {
+                        "setrandomplayerpoint", "clearrandompoints",
+                        "setwinnersdest", "setmessage" -> {
                     List<String> portalNames2 = plugin.getPortalManager().getAllPortals()
                             .stream().map(Portal::getName).toList();
                     StringUtil.copyPartialMatches(args[1], portalNames2, completions);
@@ -657,10 +716,15 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         } else if (args.length == 3 && args[0].equalsIgnoreCase("worlditemrandomization")) {
             StringUtil.copyPartialMatches(args[2], PVP_VALUES, completions);
         } else if (args.length == 4 && args[0].equalsIgnoreCase("seteliminationylevel")) {
-            // arg3 = targetWorld
             List<String> allWorlds = new ArrayList<>(plugin.getWorldManager().listLoadedWorlds());
             allWorlds.addAll(plugin.getWorldManager().listUnloadedWorlds());
             StringUtil.copyPartialMatches(args[3], allWorlds, completions);
+        } else if (args.length == 3 && args[0].equalsIgnoreCase("setwinnersdest")) {
+            List<String> allWorlds = new ArrayList<>(plugin.getWorldManager().listLoadedWorlds());
+            allWorlds.addAll(plugin.getWorldManager().listUnloadedWorlds());
+            StringUtil.copyPartialMatches(args[2], allWorlds, completions);
+        } else if (args.length == 3 && args[0].equalsIgnoreCase("setmessage")) {
+            StringUtil.copyPartialMatches(args[2], MESSAGE_TYPES, completions);
         } else if (args.length == 3 && args[0].equalsIgnoreCase("create")) {
             // destination world: suggest loaded + unloaded worlds
             List<String> all = new ArrayList<>(plugin.getWorldManager().listLoadedWorlds());
