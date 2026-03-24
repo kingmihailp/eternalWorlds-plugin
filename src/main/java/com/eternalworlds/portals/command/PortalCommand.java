@@ -2,6 +2,7 @@ package com.eternalworlds.portals.command;
 
 import com.eternalworlds.portals.EternalWorldsPlugin;
 import com.eternalworlds.portals.manager.SelectionManager;
+import com.eternalworlds.portals.manager.WorldConfigManager;
 import com.eternalworlds.portals.model.Portal;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
@@ -22,10 +23,12 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> SUBCOMMANDS = Arrays.asList(
             "create", "delete", "enable", "disable", "toggle",
-            "list", "info", "wand", "setdest", "setspawn", "loadworld", "reload", "worldgamemode", "worldpvp"
+            "list", "info", "wand", "setdest", "setspawn", "travel",
+            "loadworld", "reload", "worldgamemode", "worldpvp", "worldclearinv"
     );
 
-    private static final List<String> PVP_VALUES = Arrays.asList("on", "off");
+    private static final List<String> PVP_VALUES      = Arrays.asList("on", "off");
+    private static final List<String> BOOL_VALUES     = Arrays.asList("true", "false");
 
     private static final List<String> GAMEMODE_VALUES = Arrays.asList(
             "survival", "creative", "adventure", "spectator", "none"
@@ -63,10 +66,12 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             case "wand"      -> cmdWand(sender);
             case "setdest"        -> cmdSetDest(sender, args);
             case "setspawn"       -> cmdSetSpawn(sender, args);
+            case "travel"         -> cmdTravel(sender, args);
             case "loadworld"      -> cmdLoadWorld(sender, args);
             case "reload"         -> cmdReload(sender);
             case "worldgamemode"  -> cmdWorldGameMode(sender, args);
             case "worldpvp"       -> cmdWorldPvp(sender, args);
+            case "worldclearinv"  -> cmdWorldClearInv(sender, args);
             default               -> { sendHelp(sender); yield true; }
         };
     }
@@ -286,6 +291,69 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
+    // /portal travel <worldName>
+    private boolean cmdTravel(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage("§cOnly players can use /portal travel.");
+            return true;
+        }
+        if (args.length < 2) {
+            player.sendMessage("§cUsage: /portal travel <worldName>");
+            return true;
+        }
+        String worldName = args[1];
+
+        if (player.getWorld().getName().equalsIgnoreCase(worldName)) {
+            player.sendMessage("§eYou are already in world §b" + worldName + "§e.");
+            return true;
+        }
+
+        player.sendMessage("§7Travelling to §e" + worldName + "§7...");
+        World world = plugin.getWorldManager().loadWorld(worldName);
+        if (world == null) {
+            player.sendMessage("§c[Portals] World §e" + worldName + " §ccould not be loaded.");
+            return true;
+        }
+
+        // Use custom spawn if configured, otherwise fall back to world spawn
+        WorldConfigManager.WorldSpawn customSpawn = plugin.getWorldConfigManager().getSpawn(worldName);
+        Location destination = customSpawn != null
+                ? customSpawn.toLocation(world)
+                : world.getSpawnLocation();
+
+        player.teleportAsync(destination).thenAccept(success -> {
+            if (success && plugin.getConfig().getBoolean("teleport-message", true)) {
+                String msg = plugin.getConfig()
+                        .getString("teleport-message-text", "&aYou have been teleported to &b{world}&a!")
+                        .replace("{world}", worldName)
+                        .replace("&", "§");
+                player.sendMessage(msg);
+            }
+        });
+        return true;
+    }
+
+    // /portal worldclearinv <worldName> <true|false>
+    private boolean cmdWorldClearInv(CommandSender sender, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage("§cUsage: /portal worldclearinv <worldName> <true|false>");
+            return true;
+        }
+        String worldName = args[1];
+        String value     = args[2].toLowerCase();
+
+        if (!value.equals("true") && !value.equals("false")) {
+            sender.sendMessage("§cInvalid value: §e" + value + "§c. Use §ftrue §cor §ffalse§c.");
+            return true;
+        }
+
+        boolean clear = value.equals("true");
+        plugin.getWorldConfigManager().setClearInventory(worldName, clear);
+        sender.sendMessage("§a[Portals] Clear inventory on entry for world §e" + worldName
+                + (clear ? " §aenabled." : " §cdisabled."));
+        return true;
+    }
+
     // /portal loadworld <worldName>
     private boolean cmdLoadWorld(CommandSender sender, String[] args) {
         if (args.length < 2) {
@@ -381,11 +449,13 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("§e/portal toggle <name> §7– Toggle a portal on/off");
         sender.sendMessage("§e/portal setdest <name> §7– Set arrival point to your location");
         sender.sendMessage("§e/portal setspawn [world] §7– Set spawn point for a world (defaults to current world)");
+        sender.sendMessage("§e/portal travel <world> §7– Teleport yourself to a world");
         sender.sendMessage("§e/portal list §7– List all portals");
         sender.sendMessage("§e/portal info <name> §7– Show portal details");
         sender.sendMessage("§e/portal loadworld <worldName> §7– Load a world from the server folder");
         sender.sendMessage("§e/portal worldgamemode <world> <mode> §7– Set default gamemode for a world (none to remove)");
         sender.sendMessage("§e/portal worldpvp <world> <on|off> §7– Enable or disable PvP in a world");
+        sender.sendMessage("§e/portal worldclearinv <world> <true|false> §7– Clear inventory on entry to a world");
         sender.sendMessage("§e/portal reload §7– Reload config and portals");
     }
 
@@ -424,7 +494,7 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
                     List<String> worlds = plugin.getWorldManager().listUnloadedWorlds();
                     StringUtil.copyPartialMatches(args[1], worlds, completions);
                 }
-                case "worldgamemode", "worldpvp" -> {
+                case "travel", "worldgamemode", "worldpvp", "worldclearinv" -> {
                     List<String> allWorlds = new ArrayList<>(plugin.getWorldManager().listLoadedWorlds());
                     allWorlds.addAll(plugin.getWorldManager().listUnloadedWorlds());
                     StringUtil.copyPartialMatches(args[1], allWorlds, completions);
@@ -434,6 +504,8 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             StringUtil.copyPartialMatches(args[2], GAMEMODE_VALUES, completions);
         } else if (args.length == 3 && args[0].equalsIgnoreCase("worldpvp")) {
             StringUtil.copyPartialMatches(args[2], PVP_VALUES, completions);
+        } else if (args.length == 3 && args[0].equalsIgnoreCase("worldclearinv")) {
+            StringUtil.copyPartialMatches(args[2], BOOL_VALUES, completions);
         } else if (args.length == 3 && args[0].equalsIgnoreCase("create")) {
             // destination world: suggest loaded + unloaded worlds
             List<String> all = new ArrayList<>(plugin.getWorldManager().listLoadedWorlds());

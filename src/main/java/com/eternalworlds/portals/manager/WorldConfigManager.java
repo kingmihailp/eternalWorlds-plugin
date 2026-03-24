@@ -47,7 +47,12 @@ public class WorldConfigManager {
      * world name (lower-case) -> pvp override.
      * true = PvP on, false = PvP off, absent = use world's own setting.
      */
-    private final Map<String, Boolean>    worldPvp       = new HashMap<>();
+    private final Map<String, Boolean>    worldPvp            = new HashMap<>();
+    /**
+     * world name (lower-case) -> clear inventory on entry.
+     * true = clear inventory when a player enters this world, absent/false = keep inventory.
+     */
+    private final Map<String, Boolean>    worldClearInventory = new HashMap<>();
 
     public WorldConfigManager(EternalWorldsPlugin plugin) {
         this.plugin = plugin;
@@ -61,6 +66,7 @@ public class WorldConfigManager {
         worldGameModes.clear();
         worldSpawns.clear();
         worldPvp.clear();
+        worldClearInventory.clear();
         if (!file.exists()) return;
 
         YamlConfiguration cfg = YamlConfiguration.loadConfiguration(file);
@@ -86,6 +92,12 @@ public class WorldConfigManager {
                 worldPvp.put(key, cfg.getBoolean(pvpPath));
             }
 
+            // Clear inventory on entry
+            String clearInvPath = "worlds." + world + ".clear-inventory";
+            if (cfg.contains(clearInvPath)) {
+                worldClearInventory.put(key, cfg.getBoolean(clearInvPath));
+            }
+
             // Spawn
             String spawnPath = "worlds." + world + ".spawn";
             if (cfg.isConfigurationSection(spawnPath)) {
@@ -104,6 +116,7 @@ public class WorldConfigManager {
         worlds.addAll(worldGameModes.keySet());
         worlds.addAll(worldSpawns.keySet());
         worlds.addAll(worldPvp.keySet());
+        worlds.addAll(worldClearInventory.keySet());
 
         YamlConfiguration cfg = new YamlConfiguration();
         for (String world : worlds) {
@@ -114,6 +127,10 @@ public class WorldConfigManager {
             Boolean pvp = worldPvp.get(world);
             if (pvp != null) {
                 cfg.set("worlds." + world + ".pvp", pvp);
+            }
+            Boolean clearInv = worldClearInventory.get(world);
+            if (clearInv != null) {
+                cfg.set("worlds." + world + ".clear-inventory", clearInv);
             }
             WorldSpawn spawn = worldSpawns.get(world);
             if (spawn != null) {
@@ -147,6 +164,23 @@ public class WorldConfigManager {
 
     public void removeGameMode(String worldName) {
         worldGameModes.remove(worldName.toLowerCase());
+        save();
+    }
+
+    // ---- Clear inventory on entry ----
+
+    /** Returns true if inventory should be cleared when a player enters this world. */
+    public boolean isClearInventory(String worldName) {
+        return Boolean.TRUE.equals(worldClearInventory.get(worldName.toLowerCase()));
+    }
+
+    public void setClearInventory(String worldName, boolean clear) {
+        worldClearInventory.put(worldName.toLowerCase(), clear);
+        save();
+    }
+
+    public void removeClearInventory(String worldName) {
+        worldClearInventory.remove(worldName.toLowerCase());
         save();
     }
 

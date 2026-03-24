@@ -177,5 +177,9 @@ public class PortalListener implements Listener {
         if (gm != null) {
             player.setGameMode(gm);
         }
+
+        if (plugin.getWorldConfigManager().isClearInventory(worldName)) {
+            player.getInventory().clear();
+        }
     }
 }
