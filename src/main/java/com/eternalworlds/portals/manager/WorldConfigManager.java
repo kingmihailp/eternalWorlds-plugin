@@ -60,6 +60,11 @@ public class WorldConfigManager {
      * at the moment winners are teleported out by the portal scheduler.
      */
     private final Map<String, Boolean>           worldCleaning        = new HashMap<>();
+    /**
+     * world name (lower-case) -> target world name.
+     * When set, any player who leaves this world is immediately teleported to the target world.
+     */
+    private final Map<String, String>            worldLeavable        = new HashMap<>();
 
     public WorldConfigManager(EternalWorldsPlugin plugin) {
         this.plugin = plugin;
@@ -77,6 +82,7 @@ public class WorldConfigManager {
         worldItemRandomization.clear();
         worldElimination.clear();
         worldCleaning.clear();
+        worldLeavable.clear();
         if (!file.exists()) return;
 
         YamlConfiguration cfg = YamlConfiguration.loadConfiguration(file);
@@ -122,6 +128,10 @@ public class WorldConfigManager {
                 }
             }
 
+            // Leavable target
+            String leavablePath = "worlds." + world + ".leavable-target";
+            if (cfg.contains(leavablePath)) worldLeavable.put(key, cfg.getString(leavablePath));
+
             // Spawn
             String spawnPath = "worlds." + world + ".spawn";
             if (cfg.isConfigurationSection(spawnPath)) {
@@ -144,6 +154,7 @@ public class WorldConfigManager {
         worlds.addAll(worldItemRandomization.keySet());
         worlds.addAll(worldElimination.keySet());
         worlds.addAll(worldCleaning.keySet());
+        worlds.addAll(worldLeavable.keySet());
 
         YamlConfiguration cfg = new YamlConfiguration();
         for (String world : worlds) {
@@ -161,6 +172,9 @@ public class WorldConfigManager {
 
             Boolean cleaning = worldCleaning.get(world);
             if (cleaning != null) cfg.set("worlds." + world + ".cleaning", cleaning);
+
+            String leavable = worldLeavable.get(world);
+            if (leavable != null) cfg.set("worlds." + world + ".leavable-target", leavable);
 
             EliminationConfig ec = worldElimination.get(world);
             if (ec != null) {
@@ -266,6 +280,23 @@ public class WorldConfigManager {
 
     public void setCleaningEnabled(String worldName, boolean enabled) {
         worldCleaning.put(worldName.toLowerCase(), enabled);
+        save();
+    }
+
+    // ---- Leavable (auto-teleport on world leave) ----
+
+    /** Returns the target world players are sent to when leaving this world, or null if not set. */
+    public String getLeavable(String worldName) {
+        return worldLeavable.get(worldName.toLowerCase());
+    }
+
+    public void setLeavable(String worldName, String targetWorld) {
+        worldLeavable.put(worldName.toLowerCase(), targetWorld);
+        save();
+    }
+
+    public void removeLeavable(String worldName) {
+        worldLeavable.remove(worldName.toLowerCase());
         save();
     }
 

@@ -29,7 +29,8 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             "worlditemrandomization", "seteliminationylevel",
             "setportaldelay", "stopportaldelay",
             "setrandomplayerpoint", "clearrandompoints",
-            "setwinnersdest", "setmessage", "setcleaningworld"
+            "setwinnersdest", "setmessage", "setcleaningworld",
+            "setworldleavable", "setportaldynamicdelay"
     );
 
     private static final List<String> MESSAGE_TYPES = Arrays.asList("open", "close", "end");
@@ -87,6 +88,8 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             case "setwinnersdest"        -> cmdSetWinnersDest(sender, args);
             case "setmessage"            -> cmdSetMessage(sender, args);
             case "setcleaningworld"      -> cmdSetCleaningWorld(sender, args);
+            case "setworldleavable"      -> cmdSetWorldLeavable(sender, args);
+            case "setportaldynamicdelay" -> cmdSetPortalDynamicDelay(sender, args);
             default                      -> { sendHelp(sender); yield true; }
         };
     }
@@ -641,6 +644,55 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
+    // /portal setworldleavable <sourceWorld> <targetWorld>
+    private boolean cmdSetWorldLeavable(CommandSender sender, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage("§cUsage: /portal setworldleavable <sourceWorld> <targetWorld>");
+            return true;
+        }
+        String source = args[1];
+        String target = args[2];
+        plugin.getWorldConfigManager().setLeavable(source, target);
+        sender.sendMessage("§a[Portals] Players leaving world §e" + source
+                + " §awill be teleported to §b" + target + "§a.");
+        return true;
+    }
+
+    // /portal setportaldynamicdelay <portalName> <gameSeconds> <winnersWorld>
+    private boolean cmdSetPortalDynamicDelay(CommandSender sender, String[] args) {
+        if (args.length < 4) {
+            sender.sendMessage("§cUsage: /portal setportaldynamicdelay <portalName> <gameSeconds> <winnersWorld>");
+            sender.sendMessage("§7The portal stays open until 2+ players are online, then closes for <gameSeconds>.");
+            sender.sendMessage("§7If 1 player survives early, they win immediately. Winners are sent to <winnersWorld>.");
+            return true;
+        }
+        String portalName   = args[1];
+        String winnersWorld = args[3];
+
+        if (plugin.getPortalManager().getPortal(portalName) == null) {
+            sender.sendMessage("§cPortal §e" + portalName + " §cnot found.");
+            return true;
+        }
+
+        int gameSec;
+        try {
+            gameSec = Integer.parseInt(args[2]);
+        } catch (NumberFormatException e) {
+            sender.sendMessage("§cGame duration must be a whole number of seconds.");
+            return true;
+        }
+        if (gameSec <= 0) {
+            sender.sendMessage("§cGame duration must be greater than zero.");
+            return true;
+        }
+
+        plugin.getDynamicDelayManager().startDynamic(portalName, gameSec, winnersWorld);
+        sender.sendMessage("§a[Portals] Dynamic delay activated for portal §e" + portalName
+                + "§a: §b" + gameSec + "s §agame time, winners → §b" + winnersWorld + "§a.");
+        sender.sendMessage("§7Portal will stay open until 2+ players are online.");
+        return true;
+    }
+
     // /portal reload
     private boolean cmdReload(CommandSender sender) {
         plugin.reloadConfig();
@@ -679,6 +731,8 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("§e/portal setwinnersdest <portal> <world> §7– Set world where players are sent after the game ends");
         sender.sendMessage("§e/portal setmessage <portal> <open|close|end> <msg> §7– Set a portal message (hex: &#RRGGBB, {portal}, {world})");
         sender.sendMessage("§e/portal setcleaningworld <world> <true|false> §7– Clean a world (entities+blocks, r=800) when game ends");
+        sender.sendMessage("§e/portal setworldleavable <sourceWorld> <targetWorld> §7– Teleport players to targetWorld whenever they leave sourceWorld");
+        sender.sendMessage("§e/portal setportaldynamicdelay <portal> <gameSec> <winnersWorld> §7– Dynamic mode: portal waits for 2+ players, then runs game for gameSec; last survivor wins");
         sender.sendMessage("§e/portal reload §7– Reload config and portals");
     }
 
@@ -725,10 +779,16 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
                 }
                 case "setportaldelay", "stopportaldelay",
                         "setrandomplayerpoint", "clearrandompoints",
-                        "setwinnersdest", "setmessage" -> {
+                        "setwinnersdest", "setmessage",
+                        "setportaldynamicdelay" -> {
                     List<String> portalNames2 = plugin.getPortalManager().getAllPortals()
                             .stream().map(Portal::getName).toList();
                     StringUtil.copyPartialMatches(args[1], portalNames2, completions);
+                }
+                case "setworldleavable" -> {
+                    List<String> allWorlds = new ArrayList<>(plugin.getWorldManager().listLoadedWorlds());
+                    allWorlds.addAll(plugin.getWorldManager().listUnloadedWorlds());
+                    StringUtil.copyPartialMatches(args[1], allWorlds, completions);
                 }
             }
         } else if (args.length == 3 && args[0].equalsIgnoreCase("worldgamemode")) {
@@ -754,6 +814,14 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             List<String> all = new ArrayList<>(plugin.getWorldManager().listLoadedWorlds());
             all.addAll(plugin.getWorldManager().listUnloadedWorlds());
             StringUtil.copyPartialMatches(args[2], all, completions);
+        } else if (args.length == 3 && args[0].equalsIgnoreCase("setworldleavable")) {
+            List<String> allWorlds = new ArrayList<>(plugin.getWorldManager().listLoadedWorlds());
+            allWorlds.addAll(plugin.getWorldManager().listUnloadedWorlds());
+            StringUtil.copyPartialMatches(args[2], allWorlds, completions);
+        } else if (args.length == 4 && args[0].equalsIgnoreCase("setportaldynamicdelay")) {
+            List<String> allWorlds = new ArrayList<>(plugin.getWorldManager().listLoadedWorlds());
+            allWorlds.addAll(plugin.getWorldManager().listUnloadedWorlds());
+            StringUtil.copyPartialMatches(args[3], allWorlds, completions);
         }
 
         return completions;

@@ -173,7 +173,26 @@ public class PortalListener implements Listener {
 
     @EventHandler(priority = EventPriority.NORMAL)
     public void onPlayerChangedWorld(PlayerChangedWorldEvent event) {
-        applyWorldSettings(event.getPlayer(), event.getPlayer().getWorld().getName());
+        Player player        = event.getPlayer();
+        String fromWorldName = event.getFrom().getName();
+        String newWorldName  = player.getWorld().getName();
+
+        // If the world the player just left has a "leavable" target configured,
+        // send them there — unless they already landed in that target world.
+        String leavableTarget = plugin.getWorldConfigManager().getLeavable(fromWorldName);
+        if (leavableTarget != null && !newWorldName.equalsIgnoreCase(leavableTarget)) {
+            World dest = plugin.getWorldManager().loadWorld(leavableTarget);
+            if (dest != null) {
+                WorldConfigManager.WorldSpawn spawn =
+                        plugin.getWorldConfigManager().getSpawn(leavableTarget);
+                Location tpDest = spawn != null
+                        ? spawn.toLocation(dest)
+                        : dest.getSpawnLocation();
+                player.teleportAsync(tpDest);
+            }
+        }
+
+        applyWorldSettings(player, newWorldName);
     }
 
     // ---- Custom respawn location ----

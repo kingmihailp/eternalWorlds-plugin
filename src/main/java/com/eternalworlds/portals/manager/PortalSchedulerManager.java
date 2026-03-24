@@ -222,7 +222,7 @@ public class PortalSchedulerManager {
      *   2. Replaces all non-bedrock, non-air blocks in loaded chunks with air —
      *      processed CHUNKS_PER_TICK chunks per tick to avoid server lag.
      */
-    private void cleanWorld(World world) {
+    public void cleanWorld(World world) {
         // 1. Remove entities within radius
         for (Entity entity : world.getEntities()) {
             if (entity instanceof Player) continue;

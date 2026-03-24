@@ -2,6 +2,7 @@ package com.eternalworlds.portals;
 
 import com.eternalworlds.portals.command.PortalCommand;
 import com.eternalworlds.portals.listener.PortalListener;
+import com.eternalworlds.portals.manager.DynamicDelayManager;
 import com.eternalworlds.portals.manager.ItemRandomizationManager;
 import com.eternalworlds.portals.manager.MinigameConfigManager;
 import com.eternalworlds.portals.manager.PortalManager;
@@ -22,6 +23,7 @@ public final class EternalWorldsPlugin extends JavaPlugin {
     private RandomPointManager       randomPointManager;
     private MinigameConfigManager    minigameConfigManager;
     private PortalSchedulerManager   portalSchedulerManager;
+    private DynamicDelayManager      dynamicDelayManager;
 
     @Override
     public void onEnable() {
@@ -35,9 +37,11 @@ public final class EternalWorldsPlugin extends JavaPlugin {
         this.randomPointManager        = new RandomPointManager(this);
         this.minigameConfigManager     = new MinigameConfigManager(this);
         this.portalSchedulerManager    = new PortalSchedulerManager(this);
+        this.dynamicDelayManager       = new DynamicDelayManager(this);
         portalManager.loadPortals();
         // Restore portal cycles that were active before the last shutdown
         portalSchedulerManager.loadAndRestartCycles();
+        dynamicDelayManager.loadAndRestart();
 
         PortalCommand executor = new PortalCommand(this);
         var cmd = getCommand("portal");
@@ -51,6 +55,7 @@ public final class EternalWorldsPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (dynamicDelayManager != null) dynamicDelayManager.cancelAll();
         portalSchedulerManager.cancelAll();
         itemRandomizationManager.cancelAll();
         if (portalManager != null) portalManager.savePortals();
@@ -65,4 +70,5 @@ public final class EternalWorldsPlugin extends JavaPlugin {
     public RandomPointManager        getRandomPointManager()        { return randomPointManager; }
     public MinigameConfigManager     getMinigameConfigManager()     { return minigameConfigManager; }
     public PortalSchedulerManager    getPortalSchedulerManager()    { return portalSchedulerManager; }
+    public DynamicDelayManager       getDynamicDelayManager()       { return dynamicDelayManager; }
 }
