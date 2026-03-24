@@ -18,6 +18,7 @@ import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.inventory.EquipmentSlot;
 
@@ -32,9 +33,11 @@ public class PortalListener implements Listener {
     private final EternalWorldsPlugin plugin;
 
     /** Tracks when each player last used a portal (epoch ms). */
-    private final Map<UUID, Long> portalCooldowns     = new HashMap<>();
+    private final Map<UUID, Long>   portalCooldowns     = new HashMap<>();
     /** Prevents repeated elimination triggers while falling. */
-    private final Set<UUID>       eliminationPending  = new HashSet<>();
+    private final Set<UUID>         eliminationPending  = new HashSet<>();
+    /** Players who disconnected from a leavable world and must be teleported on next join. */
+    private final Map<UUID, String> pendingLeavableTp   = new HashMap<>();
 
     public PortalListener(EternalWorldsPlugin plugin) {
         this.plugin = plugin;
@@ -168,7 +171,32 @@ public class PortalListener implements Listener {
 
     @EventHandler(priority = EventPriority.NORMAL)
     public void onPlayerJoin(PlayerJoinEvent event) {
-        applyWorldSettings(event.getPlayer(), event.getPlayer().getWorld().getName());
+        Player player = event.getPlayer();
+        String targetWorld = pendingLeavableTp.remove(player.getUniqueId());
+        if (targetWorld != null) {
+            World dest = plugin.getWorldManager().loadWorld(targetWorld);
+            if (dest != null) {
+                WorldConfigManager.WorldSpawn spawn =
+                        plugin.getWorldConfigManager().getSpawn(targetWorld);
+                Location tpDest = spawn != null
+                        ? spawn.toLocation(dest)
+                        : dest.getSpawnLocation();
+                // Schedule 1 tick later so the player is fully loaded before teleport
+                plugin.getServer().getScheduler().runTaskLater(plugin,
+                        () -> player.teleportAsync(tpDest), 1L);
+            }
+        }
+        applyWorldSettings(player, player.getWorld().getName());
+    }
+
+    @EventHandler(priority = EventPriority.NORMAL)
+    public void onPlayerQuit(PlayerQuitEvent event) {
+        Player player        = event.getPlayer();
+        String currentWorld  = player.getWorld().getName();
+        String leavableTarget = plugin.getWorldConfigManager().getLeavable(currentWorld);
+        if (leavableTarget != null) {
+            pendingLeavableTp.put(player.getUniqueId(), leavableTarget);
+        }
     }
 
     @EventHandler(priority = EventPriority.NORMAL)
