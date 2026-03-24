@@ -6,6 +6,7 @@ import com.eternalworlds.portals.manager.WorldConfigManager;
 import com.eternalworlds.portals.model.Portal;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -69,6 +70,13 @@ public class PortalListener implements Listener {
         Location from = event.getFrom();
         Location to   = event.getTo();
         if (to == null) return;
+
+        // Let vanilla handle its own portal blocks — our logic must not interfere.
+        // PlayerMoveEvent fires BEFORE PlayerPortalEvent, so without this check
+        // our custom portal / Y-elimination logic would run first and teleport
+        // the player to the wrong world.
+        Material toBlock = to.getBlock().getType();
+        if (toBlock == Material.END_PORTAL || toBlock == Material.NETHER_PORTAL) return;
 
         Player player = event.getPlayer();
 
