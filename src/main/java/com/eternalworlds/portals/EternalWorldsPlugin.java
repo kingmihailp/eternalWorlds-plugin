@@ -36,6 +36,8 @@ public final class EternalWorldsPlugin extends JavaPlugin {
         this.minigameConfigManager     = new MinigameConfigManager(this);
         this.portalSchedulerManager    = new PortalSchedulerManager(this);
         portalManager.loadPortals();
+        // Restore portal cycles that were active before the last shutdown
+        portalSchedulerManager.loadAndRestartCycles();
 
         PortalCommand executor = new PortalCommand(this);
         var cmd = getCommand("portal");

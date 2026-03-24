@@ -3,14 +3,23 @@ package com.eternalworlds.portals.manager;
 import com.eternalworlds.portals.EternalWorldsPlugin;
 import com.eternalworlds.portals.model.Portal;
 import com.eternalworlds.portals.util.ColorUtil;
+import org.bukkit.Chunk;
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.World;
+import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitTask;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Manages repeating enable/disable cycles for portals.
@@ -21,26 +30,41 @@ import java.util.Map;
  *   3. Disable portal → broadcast close-message, start item randomization
  *   4. Wait disableSeconds
  *   5. Stop randomization, send end-message to players in dest world
- *   6. Wait 3 seconds (so players can read the message)
- *   7. Teleport players in dest world to winners-dest world
- *   8. Enable portal  → broadcast open-message  [repeat from step 2]
+ *   6. Wait 3 seconds (grace period to read the message)
+ *   7. If dest world has cleaning enabled → clean it (entities + blocks)
+ *   8. Teleport players in dest world to winners-dest world
+ *   9. Enable portal  → broadcast open-message  [repeat from step 2]
+ *
+ * Active cycles are persisted in <plugin-folder>/scheduler.yml so they
+ * survive server restarts.
  */
 public class PortalSchedulerManager {
 
     /** Ticks to wait after end-message before teleporting players to winners dest. */
     private static final long END_GRACE_TICKS = 60L; // 3 seconds
 
+    /** Radius (blocks from world origin) to clean. */
+    private static final int CLEAN_RADIUS = 800;
+    /** Chunks processed per tick during world cleaning. */
+    private static final int CHUNKS_PER_TICK = 3;
+
     private final EternalWorldsPlugin plugin;
+    private final File schedulerFile;
+
     /** portal name (lower-case) -> currently pending phase task */
     private final Map<String, BukkitTask> tasks = new HashMap<>();
 
     public PortalSchedulerManager(EternalWorldsPlugin plugin) {
-        this.plugin = plugin;
+        this.plugin        = plugin;
+        this.schedulerFile = new File(plugin.getDataFolder(), "scheduler.yml");
     }
+
+    // ---- Public API ----
 
     /**
      * Starts (or restarts) the cycle for the given portal.
      * Immediately enables the portal and broadcasts the open-message.
+     * The cycle configuration is saved to scheduler.yml.
      */
     public void startCycle(String portalName, int enableSeconds, int disableSeconds) {
         stopCycle(portalName);
@@ -50,7 +74,10 @@ public class PortalSchedulerManager {
 
         String destWorld = portal.getDestinationWorld();
 
-        // Phase 1 start: enable portal, stop item randomization
+        // Persist the cycle so it can be restored after a restart
+        saveCycle(portalName, enableSeconds, disableSeconds);
+
+        // Phase 1 start: enable portal, stop item randomization, announce
         setPortalEnabled(portalName, true);
         plugin.getItemRandomizationManager().stopRandomization(destWorld);
         broadcastGlobal(plugin.getMinigameConfigManager().getOpenMessage(portalName), portalName, destWorld);
@@ -58,10 +85,11 @@ public class PortalSchedulerManager {
         scheduleNextPhase(portalName, destWorld, enableSeconds, disableSeconds, true);
     }
 
-    /** Stops the cycle and leaves the portal in its current state. */
+    /** Stops the cycle and removes it from scheduler.yml. */
     public void stopCycle(String portalName) {
         BukkitTask t = tasks.remove(portalName.toLowerCase());
         if (t != null) t.cancel();
+        removeCycle(portalName);
     }
 
     public boolean isRunning(String portalName) {
@@ -71,9 +99,37 @@ public class PortalSchedulerManager {
     public void cancelAll() {
         tasks.values().forEach(BukkitTask::cancel);
         tasks.clear();
+        // Note: we deliberately do NOT wipe scheduler.yml on cancelAll() —
+        // that is called on server shutdown and the cycles should resume on next start.
     }
 
-    // ---- Internal ----
+    /**
+     * Reads scheduler.yml and restarts all previously active cycles.
+     * Called from EternalWorldsPlugin.onEnable() after portals are loaded.
+     */
+    public void loadAndRestartCycles() {
+        if (!schedulerFile.exists()) return;
+        YamlConfiguration cfg = YamlConfiguration.loadConfiguration(schedulerFile);
+        if (!cfg.isConfigurationSection("active-cycles")) return;
+
+        for (String portalName : cfg.getConfigurationSection("active-cycles").getKeys(false)) {
+            int enableSec  = cfg.getInt("active-cycles." + portalName + ".enable-seconds", 0);
+            int disableSec = cfg.getInt("active-cycles." + portalName + ".disable-seconds", 0);
+            if (enableSec <= 0 || disableSec <= 0) continue;
+
+            Portal portal = plugin.getPortalManager().getPortal(portalName);
+            if (portal == null) {
+                plugin.getLogger().warning("[Portals] Scheduler: portal '" + portalName
+                        + "' no longer exists, skipping cycle restore.");
+                continue;
+            }
+            plugin.getLogger().info("[Portals] Restoring cycle for portal '" + portalName
+                    + "' (" + enableSec + "s open / " + disableSec + "s closed).");
+            startCycle(portalName, enableSec, disableSec);
+        }
+    }
+
+    // ---- Internal scheduling ----
 
     private void scheduleNextPhase(String portalName, String destWorld,
                                    int enableSec, int disableSec, boolean portalCurrentlyEnabled) {
@@ -82,7 +138,7 @@ public class PortalSchedulerManager {
         BukkitTask task = plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
 
             if (portalCurrentlyEnabled) {
-                // ── Enable phase ended: close the portal ──────────────────────────
+                // ── Enable phase ended: close the portal ──────────────────────
                 broadcastGlobal(plugin.getMinigameConfigManager().getCloseMessage(portalName),
                         portalName, destWorld);
                 setPortalEnabled(portalName, false);
@@ -94,19 +150,29 @@ public class PortalSchedulerManager {
                 scheduleNextPhase(portalName, destWorld, enableSec, disableSec, false);
 
             } else {
-                // ── Disable phase ended: game over ────────────────────────────────
+                // ── Disable phase ended: game over ────────────────────────────
                 plugin.getItemRandomizationManager().stopRandomization(destWorld);
 
-                // 1. Send end-message to every player in the game world
+                // Send end-message to every player still in the game world
                 broadcastToWorld(destWorld,
                         plugin.getMinigameConfigManager().getEndMessage(portalName),
                         portalName, destWorld);
 
-                // 2. After grace period: teleport to winners dest, then re-open portal
+                // After grace period: clean world (if enabled), teleport, re-open portal
                 BukkitTask endTask = plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
 
+                    // 1. Clean the game world (entities + blocks) if configured
+                    if (plugin.getWorldConfigManager().isCleaningEnabled(destWorld)) {
+                        World gameWorld = plugin.getServer().getWorld(destWorld);
+                        if (gameWorld != null) {
+                            cleanWorld(gameWorld);
+                        }
+                    }
+
+                    // 2. Teleport players to winners destination
                     teleportToWinnersDest(portalName, destWorld);
 
+                    // 3. Re-enable portal and announce
                     setPortalEnabled(portalName, true);
                     broadcastGlobal(plugin.getMinigameConfigManager().getOpenMessage(portalName),
                             portalName, destWorld);
@@ -124,7 +190,7 @@ public class PortalSchedulerManager {
         tasks.put(portalName.toLowerCase(), task);
     }
 
-    // ---- Helpers ----
+    // ---- Winners teleport ----
 
     private void teleportToWinnersDest(String portalName, String gameWorldName) {
         String winnersDest = plugin.getMinigameConfigManager().getWinnersDest(portalName);
@@ -148,19 +214,113 @@ public class PortalSchedulerManager {
         }
     }
 
+    // ---- World cleaning ----
+
     /**
-     * Broadcasts a message to all players on the server.
-     * Supports hex colors via ColorUtil. No-op if message is null.
+     * Cleans the given world within CLEAN_RADIUS blocks of (0, 0):
+     *   1. Removes all non-player entities (mobs, dropped items, etc.) — synchronous, instant.
+     *   2. Replaces all non-bedrock, non-air blocks in loaded chunks with air —
+     *      processed CHUNKS_PER_TICK chunks per tick to avoid server lag.
      */
+    private void cleanWorld(World world) {
+        // 1. Remove entities within radius
+        for (Entity entity : world.getEntities()) {
+            if (entity instanceof Player) continue;
+            Location loc = entity.getLocation();
+            if (Math.abs(loc.getX()) <= CLEAN_RADIUS && Math.abs(loc.getZ()) <= CLEAN_RADIUS) {
+                entity.remove();
+            }
+        }
+
+        // 2. Gather currently loaded chunks within the radius
+        int chunkRadius = (CLEAN_RADIUS / 16) + 1;
+        List<Chunk> chunks = new ArrayList<>();
+
+        for (int cx = -chunkRadius; cx <= chunkRadius; cx++) {
+            for (int cz = -chunkRadius; cz <= chunkRadius; cz++) {
+                // Skip chunks whose centre is clearly outside the radius
+                if (Math.sqrt((double) cx * cx + (double) cz * cz) * 16 > CLEAN_RADIUS + 16) continue;
+                if (world.isChunkLoaded(cx, cz)) {
+                    chunks.add(world.getChunkAt(cx, cz));
+                }
+            }
+        }
+
+        if (chunks.isEmpty()) return;
+
+        AtomicInteger index   = new AtomicInteger(0);
+        AtomicReference<BukkitTask> ref = new AtomicReference<>();
+
+        BukkitTask cleanTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
+            int processed = 0;
+            while (index.get() < chunks.size() && processed < CHUNKS_PER_TICK) {
+                clearChunk(chunks.get(index.getAndIncrement()));
+                processed++;
+            }
+            if (index.get() >= chunks.size()) {
+                BukkitTask t = ref.get();
+                if (t != null) t.cancel();
+            }
+        }, 1L, 1L);
+
+        ref.set(cleanTask);
+        plugin.getLogger().info("[Portals] Cleaning world '" + world.getName()
+                + "': " + chunks.size() + " chunks to process.");
+    }
+
+    /** Replaces every non-bedrock, non-air block in the chunk with air (no physics update). */
+    private void clearChunk(Chunk chunk) {
+        World world = chunk.getWorld();
+        int minY = world.getMinHeight();
+        int maxY = world.getMaxHeight();
+
+        for (int x = 0; x < 16; x++) {
+            for (int z = 0; z < 16; z++) {
+                for (int y = minY; y < maxY; y++) {
+                    var block = chunk.getBlock(x, y, z);
+                    Material type = block.getType();
+                    if (type != Material.BEDROCK && type != Material.AIR && !block.isEmpty()) {
+                        block.setType(Material.AIR, false);
+                    }
+                }
+            }
+        }
+    }
+
+    // ---- Persistence helpers ----
+
+    private void saveCycle(String portalName, int enableSec, int disableSec) {
+        YamlConfiguration cfg = schedulerFile.exists()
+                ? YamlConfiguration.loadConfiguration(schedulerFile)
+                : new YamlConfiguration();
+        String path = "active-cycles." + portalName.toLowerCase();
+        cfg.set(path + ".enable-seconds",  enableSec);
+        cfg.set(path + ".disable-seconds", disableSec);
+        try {
+            cfg.save(schedulerFile);
+        } catch (IOException e) {
+            plugin.getLogger().severe("[Portals] Failed to save scheduler.yml: " + e.getMessage());
+        }
+    }
+
+    private void removeCycle(String portalName) {
+        if (!schedulerFile.exists()) return;
+        YamlConfiguration cfg = YamlConfiguration.loadConfiguration(schedulerFile);
+        cfg.set("active-cycles." + portalName.toLowerCase(), null);
+        try {
+            cfg.save(schedulerFile);
+        } catch (IOException e) {
+            plugin.getLogger().severe("[Portals] Failed to save scheduler.yml: " + e.getMessage());
+        }
+    }
+
+    // ---- Broadcast helpers ----
+
     private void broadcastGlobal(String message, String portalName, String worldName) {
         if (message == null) return;
         plugin.getServer().broadcastMessage(buildMessage(message, portalName, worldName));
     }
 
-    /**
-     * Sends a message to all players currently in the given world.
-     * No-op if message is null or world is not loaded.
-     */
     private void broadcastToWorld(String worldName, String message,
                                   String portalName, String worldDisplayName) {
         if (message == null) return;

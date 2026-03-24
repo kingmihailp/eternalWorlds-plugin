@@ -54,6 +54,12 @@ public class WorldConfigManager {
     private final Map<String, Boolean>           worldClearInventory  = new HashMap<>();
     private final Map<String, Boolean>           worldItemRandomization = new HashMap<>();
     private final Map<String, EliminationConfig> worldElimination     = new HashMap<>();
+    /**
+     * world name (lower-case) -> cleaning enabled.
+     * When true, the world is cleaned (entities + blocks within 800 blocks of origin)
+     * at the moment winners are teleported out by the portal scheduler.
+     */
+    private final Map<String, Boolean>           worldCleaning        = new HashMap<>();
 
     public WorldConfigManager(EternalWorldsPlugin plugin) {
         this.plugin = plugin;
@@ -70,6 +76,7 @@ public class WorldConfigManager {
         worldClearInventory.clear();
         worldItemRandomization.clear();
         worldElimination.clear();
+        worldCleaning.clear();
         if (!file.exists()) return;
 
         YamlConfiguration cfg = YamlConfiguration.loadConfiguration(file);
@@ -100,6 +107,10 @@ public class WorldConfigManager {
             // Item randomization
             String irPath = "worlds." + world + ".item-randomization";
             if (cfg.contains(irPath)) worldItemRandomization.put(key, cfg.getBoolean(irPath));
+
+            // Cleaning
+            String cleanPath = "worlds." + world + ".cleaning";
+            if (cfg.contains(cleanPath)) worldCleaning.put(key, cfg.getBoolean(cleanPath));
 
             // Elimination
             String elimPath = "worlds." + world + ".elimination";
@@ -132,6 +143,7 @@ public class WorldConfigManager {
         worlds.addAll(worldClearInventory.keySet());
         worlds.addAll(worldItemRandomization.keySet());
         worlds.addAll(worldElimination.keySet());
+        worlds.addAll(worldCleaning.keySet());
 
         YamlConfiguration cfg = new YamlConfiguration();
         for (String world : worlds) {
@@ -146,6 +158,9 @@ public class WorldConfigManager {
 
             Boolean ir = worldItemRandomization.get(world);
             if (ir != null) cfg.set("worlds." + world + ".item-randomization", ir);
+
+            Boolean cleaning = worldCleaning.get(world);
+            if (cleaning != null) cfg.set("worlds." + world + ".cleaning", cleaning);
 
             EliminationConfig ec = worldElimination.get(world);
             if (ec != null) {
@@ -239,6 +254,18 @@ public class WorldConfigManager {
 
     public void removeEliminationConfig(String worldName) {
         worldElimination.remove(worldName.toLowerCase());
+        save();
+    }
+
+    // ---- World cleaning ----
+
+    /** Returns true if the world should be cleaned when winners are teleported out. */
+    public boolean isCleaningEnabled(String worldName) {
+        return Boolean.TRUE.equals(worldCleaning.get(worldName.toLowerCase()));
+    }
+
+    public void setCleaningEnabled(String worldName, boolean enabled) {
+        worldCleaning.put(worldName.toLowerCase(), enabled);
         save();
     }
 

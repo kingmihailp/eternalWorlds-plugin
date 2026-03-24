@@ -29,7 +29,7 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             "worlditemrandomization", "seteliminationylevel",
             "setportaldelay", "stopportaldelay",
             "setrandomplayerpoint", "clearrandompoints",
-            "setwinnersdest", "setmessage"
+            "setwinnersdest", "setmessage", "setcleaningworld"
     );
 
     private static final List<String> MESSAGE_TYPES = Arrays.asList("open", "close", "end");
@@ -86,6 +86,7 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             case "clearrandompoints"     -> cmdClearRandomPoints(sender, args);
             case "setwinnersdest"        -> cmdSetWinnersDest(sender, args);
             case "setmessage"            -> cmdSetMessage(sender, args);
+            case "setcleaningworld"      -> cmdSetCleaningWorld(sender, args);
             default                      -> { sendHelp(sender); yield true; }
         };
     }
@@ -618,6 +619,28 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
+    // /portal setcleaningworld <worldName> <true|false>
+    private boolean cmdSetCleaningWorld(CommandSender sender, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage("§cUsage: /portal setcleaningworld <worldName> <true|false>");
+            sender.sendMessage("§7When true, the world is cleaned (entities + blocks within 800 blocks)");
+            sender.sendMessage("§7at the moment winners are teleported out.");
+            return true;
+        }
+        String worldName = args[1];
+        String value     = args[2].toLowerCase();
+        if (!value.equals("true") && !value.equals("false")) {
+            sender.sendMessage("§cUse §ftrue §cor §ffalse§c.");
+            return true;
+        }
+        boolean clean = value.equals("true");
+        plugin.getWorldConfigManager().setCleaningEnabled(worldName, clean);
+        sender.sendMessage("§a[Portals] Cleaning mode for world §e" + worldName
+                + (clean ? " §aenabled." : " §cdisabled.")
+                + (clean ? " §7(entities + blocks will be cleared on game end)" : ""));
+        return true;
+    }
+
     // /portal reload
     private boolean cmdReload(CommandSender sender) {
         plugin.reloadConfig();
@@ -655,6 +678,7 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("§e/portal seteliminationylevel <world> <y> <targetWorld> §7– Teleport players below Y to another world");
         sender.sendMessage("§e/portal setwinnersdest <portal> <world> §7– Set world where players are sent after the game ends");
         sender.sendMessage("§e/portal setmessage <portal> <open|close|end> <msg> §7– Set a portal message (hex: &#RRGGBB, {portal}, {world})");
+        sender.sendMessage("§e/portal setcleaningworld <world> <true|false> §7– Clean a world (entities+blocks, r=800) when game ends");
         sender.sendMessage("§e/portal reload §7– Reload config and portals");
     }
 
@@ -694,7 +718,7 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
                     StringUtil.copyPartialMatches(args[1], worlds, completions);
                 }
                 case "travel", "worldgamemode", "worldpvp", "worldclearinv",
-                        "worlditemrandomization", "seteliminationylevel" -> {
+                        "worlditemrandomization", "seteliminationylevel", "setcleaningworld" -> {
                     List<String> allWorlds = new ArrayList<>(plugin.getWorldManager().listLoadedWorlds());
                     allWorlds.addAll(plugin.getWorldManager().listUnloadedWorlds());
                     StringUtil.copyPartialMatches(args[1], allWorlds, completions);

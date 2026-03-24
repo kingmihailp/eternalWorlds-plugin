@@ -131,7 +131,13 @@ public class RandomPointManager {
 
     /**
      * Returns a random unoccupied spawn point for the portal.
-     * Returns null if all points are occupied or none are defined.
+     *
+     * "Unoccupied" means no online player is within 2 blocks.
+     * If the destination world is not loaded it is loaded on demand —
+     * this fixes the "all occupied" false-positive after a server restart.
+     *
+     * Returns null only when every point is genuinely occupied by a player
+     * OR when no points are defined.
      */
     public Location getRandomAvailablePoint(String portalName) {
         List<SpawnPoint> list = portalPoints.get(portalName.toLowerCase());
@@ -141,11 +147,13 @@ public class RandomPointManager {
         Collections.shuffle(shuffled);
 
         for (SpawnPoint sp : shuffled) {
-            Location loc = sp.toLocation();
-            if (loc == null) continue;          // world not loaded
+            // Load the world if it is not currently loaded (e.g. after a restart)
+            World world = plugin.getWorldManager().loadWorld(sp.worldName());
+            if (world == null) continue;   // world can't be loaded at all — skip
+            Location loc = new Location(world, sp.x(), sp.y(), sp.z(), sp.yaw(), sp.pitch());
             if (!isOccupied(loc)) return loc;
         }
-        return null; // all points occupied
+        return null; // every point is genuinely occupied by a player
     }
 
     private boolean isOccupied(Location loc) {
