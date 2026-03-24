@@ -3,6 +3,7 @@ package com.eternalworlds.portals.manager;
 import com.eternalworlds.portals.EternalWorldsPlugin;
 import com.eternalworlds.portals.model.Portal;
 import com.eternalworlds.portals.util.ColorUtil;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -13,6 +14,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -20,11 +22,15 @@ import java.util.Map;
  *
  * Behaviour:
  *  1. Portal starts (and stays) ENABLED while player count on the server is 0 or 1.
- *  2. As soon as 2+ players are online the portal closes and the game timer begins.
+ *     ActionBar: §c§oожидание игроков…
+ *  2. As soon as 2+ players are online the portal closes and the countdown begins.
+ *     ActionBar: до начала игры осталось X секунд
  *  3. During the game the manager checks the portal's destination world every second:
  *     if only 1 player remains they are counted as the survivor and the round ends early.
- *  4. When the round ends (timer or last-survivor) players in the game world are sent to
- *     the configured winners world.  The world is cleaned if cleaning is enabled.
+ *     ActionBar: до конца игры осталось X секунд
+ *  4. When the round ends (timer or last-survivor) winners are announced to all players
+ *     and survivors are sent to the configured winners world.  The world is cleaned if
+ *     cleaning is enabled.
  *  5. The portal re-opens and the manager returns to step 1.
  *
  * Configuration is persisted to <plugin-folder>/dynamic-delay.yml.
@@ -36,6 +42,10 @@ public class DynamicDelayManager {
     /** Grace period after the end-message before teleporting winners (ticks). */
     private static final long END_GRACE_TICKS = 60L;  // 3 s
 
+    /** ActionBar text sent while waiting for players. */
+    private static final String AB_WAITING =
+            ColorUtil.parse("&#FF6B6B&oожидание игроков…");
+
     /** Persistent config stored per portal. */
     public record DynamicConfig(int countdownSeconds, int gameSeconds, String winnersWorld) {}
 
@@ -46,7 +56,12 @@ public class DynamicDelayManager {
 
     /** portalName (lower-case) → persisted config */
     private final Map<String, DynamicConfig> configs = new HashMap<>();
-    /** Task key → active Bukkit task.  Game-monitor task uses key "<portal>:monitor". */
+    /**
+     * Active Bukkit tasks, keyed by:
+     *   "<portal>"          – main lifecycle task (poll / countdown / endTimer)
+     *   "<portal>:monitor"  – game monitor + actionbar task
+     *   "<portal>:actionbar"– waiting-phase actionbar task
+     */
     private final Map<String, BukkitTask>    tasks   = new HashMap<>();
     /** portalName (lower-case) → current lifecycle phase */
     private final Map<String, Phase>         phases  = new HashMap<>();
@@ -97,7 +112,6 @@ public class DynamicDelayManager {
         String key = portalName.toLowerCase();
         configs.put(key, new DynamicConfig(countdownSeconds, gameSeconds, winnersWorld));
         save();
-        // A regular cycle and a dynamic cycle must not run simultaneously.
         plugin.getPortalSchedulerManager().stopCycle(portalName);
         startWaiting(key);
     }
@@ -113,6 +127,7 @@ public class DynamicDelayManager {
         configs.remove(key);
         cancelTask(key);
         cancelTask(key + ":monitor");
+        cancelTask(key + ":actionbar");
         phases.remove(key);
         save();
     }
@@ -138,15 +153,16 @@ public class DynamicDelayManager {
     private void startWaiting(String key) {
         cancelTask(key);
         cancelTask(key + ":monitor");
+        cancelTask(key + ":actionbar");
         phases.put(key, Phase.WAITING);
 
-        // Make sure the portal is open while we wait.
         Portal portal = plugin.getPortalManager().getPortal(key);
         if (portal != null && !portal.isEnabled()) {
             portal.setEnabled(true);
             plugin.getPortalManager().savePortals();
         }
 
+        // Poll player count every 2 seconds.
         BukkitTask pollTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
             if (phases.get(key) != Phase.WAITING) return;
             Portal p = plugin.getPortalManager().getPortal(key);
@@ -157,11 +173,25 @@ public class DynamicDelayManager {
             }
         }, POLL_TICKS, POLL_TICKS);
         tasks.put(key, pollTask);
+
+        // Send "ожидание игроков…" actionbar every second to players in destination world.
+        BukkitTask abTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
+            if (phases.get(key) != Phase.WAITING) return;
+            Portal p = plugin.getPortalManager().getPortal(key);
+            if (p == null) return;
+            World destWorld = plugin.getServer().getWorld(p.getDestinationWorld());
+            if (destWorld == null) return;
+            for (Player player : destWorld.getPlayers()) {
+                sendActionBar(player, AB_WAITING);
+            }
+        }, 20L, 20L);
+        tasks.put(key + ":actionbar", abTask);
     }
 
     /** Phase 1b: countdown before the game starts; cancels back to WAITING if players drop below 2. */
     private void startCountdown(String key) {
         cancelTask(key);
+        cancelTask(key + ":actionbar");
         phases.put(key, Phase.COUNTDOWN);
 
         DynamicConfig dc = configs.get(key);
@@ -187,8 +217,10 @@ public class DynamicDelayManager {
                 return;
             }
 
-            String msg = ColorUtil.parse("&e[Portals] Игра начнется через &c" + remaining[0] + " &eсек...");
-            for (Player p : destWorld.getPlayers()) p.sendMessage(msg);
+            String abText = ColorUtil.parse("&eдо начала игры осталось &c" + remaining[0] + " &eсек.");
+            for (Player p : destWorld.getPlayers()) {
+                sendActionBar(p, abText);
+            }
             remaining[0]--;
         }, 20L, 20L);
         tasks.put(key, cdTask);
@@ -206,11 +238,9 @@ public class DynamicDelayManager {
 
         String gameWorldName = portal.getDestinationWorld();
 
-        // Close the portal.
         portal.setEnabled(false);
         plugin.getPortalManager().savePortals();
 
-        // Broadcast the close message.
         String closeMsg = plugin.getMinigameConfigManager().getCloseMessage(key);
         if (closeMsg != null) {
             plugin.getServer().broadcastMessage(ColorUtil.parse(
@@ -218,23 +248,32 @@ public class DynamicDelayManager {
                         .replace("{world}",  gameWorldName)));
         }
 
-        // Start item randomization if it is enabled for the game world.
         if (plugin.getWorldConfigManager().isItemRandomizationEnabled(gameWorldName)) {
             plugin.getItemRandomizationManager().startRandomization(gameWorldName);
         }
 
-        // Monitor the game world for the last survivor (checked every second).
+        int[] timeLeft = { dc.gameSeconds() };
+
+        // Monitor last survivor + send actionbar every second.
         BukkitTask monitorTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
             if (phases.get(key) != Phase.GAME_RUNNING) return;
             World gameWorld = plugin.getServer().getWorld(gameWorldName);
             if (gameWorld == null) return;
+
             if (gameWorld.getPlayers().size() <= 1) {
                 beginEnding(key, gameWorldName, dc.winnersWorld());
+                return;
             }
+
+            String abText = ColorUtil.parse("&eдо конца игры осталось &c" + timeLeft[0] + " &eсек.");
+            for (Player p : gameWorld.getPlayers()) {
+                sendActionBar(p, abText);
+            }
+            if (timeLeft[0] > 0) timeLeft[0]--;
         }, 20L, 20L);
         tasks.put(key + ":monitor", monitorTask);
 
-        // Schedule the normal game-over after gameSeconds.
+        // Schedule normal game-over after gameSeconds.
         BukkitTask endTask = plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
             if (phases.get(key) == Phase.GAME_RUNNING) {
                 beginEnding(key, gameWorldName, dc.winnersWorld());
@@ -243,59 +282,88 @@ public class DynamicDelayManager {
         tasks.put(key, endTask);
     }
 
-    /** Phase 3: send the end message, wait the grace period, teleport winners, reset. */
+    /** Phase 3: announce winners to all players, wait the grace period, teleport winners, reset. */
     private void beginEnding(String key, String gameWorldName, String winnersWorldName) {
-        if (phases.get(key) == Phase.GAME_ENDING) return; // already ending
+        if (phases.get(key) == Phase.GAME_ENDING) return;
         phases.put(key, Phase.GAME_ENDING);
         cancelTask(key);
         cancelTask(key + ":monitor");
 
-        // Stop item randomization in the game world.
         plugin.getItemRandomizationManager().stopRandomization(gameWorldName);
 
-        // Broadcast the end message to remaining players.
-        String endMsg = plugin.getMinigameConfigManager().getEndMessage(key);
-        if (endMsg != null) {
-            World gameWorld = plugin.getServer().getWorld(gameWorldName);
-            if (gameWorld != null) {
-                Portal portal  = plugin.getPortalManager().getPortal(key);
-                String pName   = portal != null ? portal.getName() : key;
-                String parsed  = ColorUtil.parse(
-                    endMsg.replace("{portal}", pName)
-                          .replace("{world}",  gameWorldName));
-                for (Player p : gameWorld.getPlayers()) p.sendMessage(parsed);
+        // Collect winner names before teleport.
+        World gameWorld = plugin.getServer().getWorld(gameWorldName);
+        List<String> winnerNames = new ArrayList<>();
+        if (gameWorld != null) {
+            for (Player p : gameWorld.getPlayers()) {
+                winnerNames.add(p.getName());
             }
         }
 
-        // After grace period: teleport winners, optionally clean world, then re-open portal.
-        plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
-            World gameWorld    = plugin.getServer().getWorld(gameWorldName);
-            World winnersWorld = plugin.getWorldManager().loadWorld(winnersWorldName);
+        // Broadcast winners to ALL players on the server.
+        broadcastWinners(winnerNames);
 
-            // Teleport everyone remaining in the game world to the winners world.
-            if (gameWorld != null && winnersWorld != null) {
+        // Send end message to players still in the game world.
+        String endMsg = plugin.getMinigameConfigManager().getEndMessage(key);
+        if (endMsg != null && gameWorld != null) {
+            Portal portal = plugin.getPortalManager().getPortal(key);
+            String pName  = portal != null ? portal.getName() : key;
+            String parsed = ColorUtil.parse(
+                endMsg.replace("{portal}", pName)
+                      .replace("{world}",  gameWorldName));
+            for (Player p : gameWorld.getPlayers()) p.sendMessage(parsed);
+        }
+
+        plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+            World gWorld   = plugin.getServer().getWorld(gameWorldName);
+            World wWorld   = plugin.getWorldManager().loadWorld(winnersWorldName);
+
+            if (gWorld != null && wWorld != null) {
                 WorldConfigManager.WorldSpawn spawn =
                         plugin.getWorldConfigManager().getSpawn(winnersWorldName);
                 Location dest = spawn != null
-                        ? spawn.toLocation(winnersWorld)
-                        : winnersWorld.getSpawnLocation();
-                for (Player p : new ArrayList<>(gameWorld.getPlayers())) {
+                        ? spawn.toLocation(wWorld)
+                        : wWorld.getSpawnLocation();
+                for (Player p : new ArrayList<>(gWorld.getPlayers())) {
                     p.teleportAsync(dest);
                 }
             }
 
-            // Clean the game world if the admin has enabled it.
-            if (gameWorld != null && plugin.getWorldConfigManager().isCleaningEnabled(gameWorldName)) {
-                plugin.getPortalSchedulerManager().cleanWorld(gameWorld);
+            if (gWorld != null && plugin.getWorldConfigManager().isCleaningEnabled(gameWorldName)) {
+                plugin.getPortalSchedulerManager().cleanWorld(gWorld);
             }
 
-            // Short pause before the portal re-opens so cleanWorld can start its async loop.
             plugin.getServer().getScheduler().runTaskLater(plugin, () -> startWaiting(key), 20L);
-
         }, END_GRACE_TICKS);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /** Broadcasts winner names to every online player. */
+    private void broadcastWinners(List<String> names) {
+        String header = ColorUtil.parse("&6&l━━━━━━━━━━━━━━━━━━━━━━");
+        String title  = ColorUtil.parse("&e&lПобедители раунда:");
+        String footer = ColorUtil.parse("&6&l━━━━━━━━━━━━━━━━━━━━━━");
+
+        for (Player online : plugin.getServer().getOnlinePlayers()) {
+            online.sendMessage(header);
+            online.sendMessage(title);
+            if (names.isEmpty()) {
+                online.sendMessage(ColorUtil.parse("  &7(никого не осталось)"));
+            } else {
+                for (String name : names) {
+                    online.sendMessage(ColorUtil.parse("  &a" + name));
+                }
+            }
+            online.sendMessage(footer);
+        }
+    }
+
+    /** Sends an actionbar message (pre-parsed §-string) to a player. */
+    private void sendActionBar(Player player, String legacyText) {
+        player.sendActionBar(
+            LegacyComponentSerializer.legacySection().deserialize(legacyText));
+    }
 
     private void cancelTask(String key) {
         BukkitTask t = tasks.remove(key);
