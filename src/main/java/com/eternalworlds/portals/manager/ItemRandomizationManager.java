@@ -29,7 +29,7 @@ public class ItemRandomizationManager {
     static {
         List<Material> mats = new ArrayList<>();
         for (Material m : Material.values()) {
-            if (!m.isLegacy() && m.isItem() && !m.isAir()) {
+            if (!m.isLegacy() && m.isItem() && !m.isAir() && m != Material.BEDROCK) {
                 mats.add(m);
             }
         }
