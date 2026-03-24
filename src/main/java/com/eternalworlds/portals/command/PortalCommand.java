@@ -22,7 +22,7 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> SUBCOMMANDS = Arrays.asList(
             "create", "delete", "enable", "disable", "toggle",
-            "list", "info", "wand", "setdest", "loadworld", "reload", "worldgamemode"
+            "list", "info", "wand", "setdest", "setspawn", "loadworld", "reload", "worldgamemode"
     );
 
     private static final List<String> GAMEMODE_VALUES = Arrays.asList(
@@ -59,7 +59,8 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             case "list"      -> cmdList(sender);
             case "info"      -> cmdInfo(sender, args);
             case "wand"      -> cmdWand(sender);
-            case "setdest"   -> cmdSetDest(sender, args);
+            case "setdest"        -> cmdSetDest(sender, args);
+            case "setspawn"       -> cmdSetSpawn(sender, args);
             case "loadworld"      -> cmdLoadWorld(sender, args);
             case "reload"         -> cmdReload(sender);
             case "worldgamemode"  -> cmdWorldGameMode(sender, args);
@@ -256,6 +257,32 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
+    // /portal setspawn [worldName]
+    //   No arg  → sets spawn for the player's current world at their location.
+    //   With arg → player must be standing in that world; sets its spawn.
+    private boolean cmdSetSpawn(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage("§cOnly players can set a world spawn.");
+            return true;
+        }
+
+        String worldName = args.length >= 2 ? args[1] : player.getWorld().getName();
+
+        if (!player.getWorld().getName().equalsIgnoreCase(worldName)) {
+            player.sendMessage("§cYou must be standing in world §e" + worldName
+                    + " §cto set its spawn.");
+            return true;
+        }
+
+        plugin.getWorldConfigManager().setSpawn(worldName, player.getLocation());
+        player.sendMessage("§a[Portals] Spawn for world §e" + worldName
+                + " §aset to your location §7("
+                + (int) player.getLocation().getX() + ", "
+                + (int) player.getLocation().getY() + ", "
+                + (int) player.getLocation().getZ() + ")§7.");
+        return true;
+    }
+
     // /portal loadworld <worldName>
     private boolean cmdLoadWorld(CommandSender sender, String[] args) {
         if (args.length < 2) {
@@ -329,6 +356,7 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("§e/portal disable <name> §7– Disable a portal");
         sender.sendMessage("§e/portal toggle <name> §7– Toggle a portal on/off");
         sender.sendMessage("§e/portal setdest <name> §7– Set arrival point to your location");
+        sender.sendMessage("§e/portal setspawn [world] §7– Set spawn point for a world (defaults to current world)");
         sender.sendMessage("§e/portal list §7– List all portals");
         sender.sendMessage("§e/portal info <name> §7– Show portal details");
         sender.sendMessage("§e/portal loadworld <worldName> §7– Load a world from the server folder");
@@ -353,6 +381,10 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             switch (sub) {
                 case "delete", "info", "toggle", "setdest" ->
                         StringUtil.copyPartialMatches(args[1], portalNames, completions);
+                case "setspawn" -> {
+                    List<String> loaded = plugin.getWorldManager().listLoadedWorlds();
+                    StringUtil.copyPartialMatches(args[1], loaded, completions);
+                }
                 case "enable" -> {
                     List<String> disabled = plugin.getPortalManager().getAllPortals()
                             .stream().filter(p -> !p.isEnabled()).map(Portal::getName).toList();

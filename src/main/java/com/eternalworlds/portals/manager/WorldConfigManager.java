@@ -2,6 +2,8 @@ package com.eternalworlds.portals.manager;
 
 import com.eternalworlds.portals.EternalWorldsPlugin;
 import org.bukkit.GameMode;
+import org.bukkit.Location;
+import org.bukkit.World;
 import org.bukkit.configuration.file.YamlConfiguration;
 
 import java.io.File;
@@ -10,15 +12,36 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Stores per-world settings (currently: default game mode).
+ * Stores per-world settings: default game mode and custom spawn point.
  * Persisted to <plugin-folder>/worlds.yml.
+ *
+ * YAML structure:
+ * worlds:
+ *   lobby:
+ *     gamemode: ADVENTURE
+ *     spawn:
+ *       x: 0.5
+ *       y: 64.0
+ *       z: 0.5
+ *       yaw: 0.0
+ *       pitch: 0.0
  */
 public class WorldConfigManager {
 
+    /** Immutable snapshot of a world spawn position. */
+    public record WorldSpawn(double x, double y, double z, float yaw, float pitch) {
+        public Location toLocation(World world) {
+            return new Location(world, x, y, z, yaw, pitch);
+        }
+    }
+
     private final EternalWorldsPlugin plugin;
     private final File file;
+
     /** world name (lower-case) -> default game mode */
-    private final Map<String, GameMode> worldGameModes = new HashMap<>();
+    private final Map<String, GameMode>   worldGameModes = new HashMap<>();
+    /** world name (lower-case) -> custom spawn point */
+    private final Map<String, WorldSpawn> worldSpawns    = new HashMap<>();
 
     public WorldConfigManager(EternalWorldsPlugin plugin) {
         this.plugin = plugin;
@@ -26,35 +49,74 @@ public class WorldConfigManager {
         load();
     }
 
+    // ---- Persistence ----
+
     public void load() {
         worldGameModes.clear();
+        worldSpawns.clear();
         if (!file.exists()) return;
 
         YamlConfiguration cfg = YamlConfiguration.loadConfiguration(file);
         if (!cfg.isConfigurationSection("worlds")) return;
 
         for (String world : cfg.getConfigurationSection("worlds").getKeys(false)) {
+            String key = world.toLowerCase();
+
+            // Game mode
             String gmStr = cfg.getString("worlds." + world + ".gamemode");
-            if (gmStr == null) continue;
-            try {
-                worldGameModes.put(world.toLowerCase(), GameMode.valueOf(gmStr.toUpperCase()));
-            } catch (IllegalArgumentException e) {
-                plugin.getLogger().warning("Unknown gamemode '" + gmStr + "' for world '" + world + "' in worlds.yml");
+            if (gmStr != null) {
+                try {
+                    worldGameModes.put(key, GameMode.valueOf(gmStr.toUpperCase()));
+                } catch (IllegalArgumentException e) {
+                    plugin.getLogger().warning(
+                            "Unknown gamemode '" + gmStr + "' for world '" + world + "' in worlds.yml");
+                }
+            }
+
+            // Spawn
+            String spawnPath = "worlds." + world + ".spawn";
+            if (cfg.isConfigurationSection(spawnPath)) {
+                double x     = cfg.getDouble(spawnPath + ".x");
+                double y     = cfg.getDouble(spawnPath + ".y");
+                double z     = cfg.getDouble(spawnPath + ".z");
+                float  yaw   = (float) cfg.getDouble(spawnPath + ".yaw");
+                float  pitch = (float) cfg.getDouble(spawnPath + ".pitch");
+                worldSpawns.put(key, new WorldSpawn(x, y, z, yaw, pitch));
             }
         }
     }
 
     public void save() {
+        // Collect all world names from both maps
+        java.util.Set<String> worlds = new java.util.HashSet<>();
+        worlds.addAll(worldGameModes.keySet());
+        worlds.addAll(worldSpawns.keySet());
+
         YamlConfiguration cfg = new YamlConfiguration();
-        for (Map.Entry<String, GameMode> entry : worldGameModes.entrySet()) {
-            cfg.set("worlds." + entry.getKey() + ".gamemode", entry.getValue().name());
+        for (String world : worlds) {
+            GameMode gm = worldGameModes.get(world);
+            if (gm != null) {
+                cfg.set("worlds." + world + ".gamemode", gm.name());
+            }
+            WorldSpawn spawn = worldSpawns.get(world);
+            if (spawn != null) {
+                String path = "worlds." + world + ".spawn";
+                cfg.set(path + ".x",     spawn.x());
+                cfg.set(path + ".y",     spawn.y());
+                cfg.set(path + ".z",     spawn.z());
+                cfg.set(path + ".yaw",   spawn.yaw());
+                cfg.set(path + ".pitch", spawn.pitch());
+            }
         }
+
         try {
             cfg.save(file);
         } catch (IOException e) {
             plugin.getLogger().severe("Failed to save worlds.yml: " + e.getMessage());
         }
     }
+
+    // ---- Game mode ----
 
     /** Returns the default GameMode for the given world, or null if not set. */
     public GameMode getGameMode(String worldName) {
@@ -68,6 +130,24 @@ public class WorldConfigManager {
 
     public void removeGameMode(String worldName) {
         worldGameModes.remove(worldName.toLowerCase());
+        save();
+    }
+
+    // ---- Spawn point ----
+
+    /** Returns the custom spawn for the given world, or null if not set. */
+    public WorldSpawn getSpawn(String worldName) {
+        return worldSpawns.get(worldName.toLowerCase());
+    }
+
+    public void setSpawn(String worldName, Location loc) {
+        worldSpawns.put(worldName.toLowerCase(),
+                new WorldSpawn(loc.getX(), loc.getY(), loc.getZ(), loc.getYaw(), loc.getPitch()));
+        save();
+    }
+
+    public void removeSpawn(String worldName) {
+        worldSpawns.remove(worldName.toLowerCase());
         save();
     }
 }

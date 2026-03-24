@@ -2,6 +2,7 @@ package com.eternalworlds.portals.listener;
 
 import com.eternalworlds.portals.EternalWorldsPlugin;
 import com.eternalworlds.portals.manager.SelectionManager;
+import com.eternalworlds.portals.manager.WorldConfigManager;
 import com.eternalworlds.portals.model.Portal;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
@@ -11,8 +12,11 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
+import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.inventory.EquipmentSlot;
 
 import java.util.HashMap;
@@ -33,7 +37,6 @@ public class PortalListener implements Listener {
 
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
     public void onPlayerInteract(PlayerInteractEvent event) {
-        // Only handle main hand to avoid duplicate events
         if (event.getHand() != EquipmentSlot.HAND) return;
         if (!SelectionManager.isWand(event.getItem())) return;
 
@@ -61,14 +64,12 @@ public class PortalListener implements Listener {
         Location to   = event.getTo();
         if (to == null) return;
 
-        // Skip if the player hasn't moved to a new block
         if (from.getBlockX() == to.getBlockX()
                 && from.getBlockY() == to.getBlockY()
                 && from.getBlockZ() == to.getBlockZ()) return;
 
         Player player = event.getPlayer();
 
-        // Check portal-use permission
         if (!plugin.getConfig().getBoolean("allow-player-use", true)
                 && !player.hasPermission("eternalworlds.portal.admin")) return;
         if (!player.hasPermission("eternalworlds.portal.use")) return;
@@ -98,7 +99,6 @@ public class PortalListener implements Listener {
 
         player.teleportAsync(destination).thenAccept(success -> {
             if (!success) return;
-
             if (plugin.getConfig().getBoolean("teleport-message", true)) {
                 String msg = plugin.getConfig()
                         .getString("teleport-message-text", "&aYou have been teleported to &b{world}&a!")
@@ -106,11 +106,51 @@ public class PortalListener implements Listener {
                         .replace("&", "§");
                 player.sendMessage(msg);
             }
-
-            GameMode gm = plugin.getWorldConfigManager().getGameMode(portal.getDestinationWorld());
-            if (gm != null) {
-                player.setGameMode(gm);
-            }
+            // Game mode is applied by PlayerChangedWorldEvent
         });
+    }
+
+    // ---- Per-world game mode & spawn ----
+
+    /**
+     * Apply the world's default game mode when a player joins the server.
+     */
+    @EventHandler(priority = EventPriority.NORMAL)
+    public void onPlayerJoin(PlayerJoinEvent event) {
+        applyWorldSettings(event.getPlayer(), event.getPlayer().getWorld().getName());
+    }
+
+    /**
+     * Apply the world's default game mode whenever a player switches worlds
+     * (covers portal teleports, /portal loadworld, etc.).
+     */
+    @EventHandler(priority = EventPriority.NORMAL)
+    public void onPlayerChangedWorld(PlayerChangedWorldEvent event) {
+        applyWorldSettings(event.getPlayer(), event.getPlayer().getWorld().getName());
+    }
+
+    /**
+     * Override the respawn location if the world has a custom spawn point set.
+     */
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onPlayerRespawn(PlayerRespawnEvent event) {
+        // Don't override bed/anchor respawns — they represent an explicit player choice
+        if (event.isBedSpawn() || event.isAnchorSpawn()) return;
+
+        String worldName = event.getPlayer().getWorld().getName();
+        WorldConfigManager.WorldSpawn spawn = plugin.getWorldConfigManager().getSpawn(worldName);
+        if (spawn == null) return;
+
+        World world = event.getPlayer().getWorld();
+        event.setRespawnLocation(spawn.toLocation(world));
+    }
+
+    // ---- Internal helpers ----
+
+    private void applyWorldSettings(Player player, String worldName) {
+        GameMode gm = plugin.getWorldConfigManager().getGameMode(worldName);
+        if (gm != null) {
+            player.setGameMode(gm);
+        }
     }
 }
