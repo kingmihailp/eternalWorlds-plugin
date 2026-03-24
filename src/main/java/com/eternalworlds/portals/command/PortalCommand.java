@@ -658,25 +658,38 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
-    // /portal setportaldynamicdelay <portalName> <gameSeconds> <winnersWorld>
+    // /portal setportaldynamicdelay <portalName> <countdownSeconds> <gameSeconds> <winnersWorld>
     private boolean cmdSetPortalDynamicDelay(CommandSender sender, String[] args) {
-        if (args.length < 4) {
-            sender.sendMessage("§cUsage: /portal setportaldynamicdelay <portalName> <gameSeconds> <winnersWorld>");
-            sender.sendMessage("§7The portal stays open until 2+ players are online, then closes for <gameSeconds>.");
+        if (args.length < 5) {
+            sender.sendMessage("§cUsage: /portal setportaldynamicdelay <portalName> <countdownSeconds> <gameSeconds> <winnersWorld>");
+            sender.sendMessage("§7The portal stays open until 2+ players are in the destination world.");
+            sender.sendMessage("§7A countdown of <countdownSeconds> runs before the portal closes for <gameSeconds>.");
             sender.sendMessage("§7If 1 player survives early, they win immediately. Winners are sent to <winnersWorld>.");
             return true;
         }
         String portalName   = args[1];
-        String winnersWorld = args[3];
+        String winnersWorld = args[4];
 
         if (plugin.getPortalManager().getPortal(portalName) == null) {
             sender.sendMessage("§cPortal §e" + portalName + " §cnot found.");
             return true;
         }
 
+        int countdownSec;
+        try {
+            countdownSec = Integer.parseInt(args[2]);
+        } catch (NumberFormatException e) {
+            sender.sendMessage("§cCountdown duration must be a whole number of seconds.");
+            return true;
+        }
+        if (countdownSec <= 0) {
+            sender.sendMessage("§cCountdown duration must be greater than zero.");
+            return true;
+        }
+
         int gameSec;
         try {
-            gameSec = Integer.parseInt(args[2]);
+            gameSec = Integer.parseInt(args[3]);
         } catch (NumberFormatException e) {
             sender.sendMessage("§cGame duration must be a whole number of seconds.");
             return true;
@@ -686,10 +699,10 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
-        plugin.getDynamicDelayManager().startDynamic(portalName, gameSec, winnersWorld);
+        plugin.getDynamicDelayManager().startDynamic(portalName, countdownSec, gameSec, winnersWorld);
         sender.sendMessage("§a[Portals] Dynamic delay activated for portal §e" + portalName
-                + "§a: §b" + gameSec + "s §agame time, winners → §b" + winnersWorld + "§a.");
-        sender.sendMessage("§7Portal will stay open until 2+ players are online.");
+                + "§a: §b" + countdownSec + "s §acountdown, §b" + gameSec + "s §agame time, winners → §b" + winnersWorld + "§a.");
+        sender.sendMessage("§7Portal will stay open until 2+ players are in the destination world.");
         return true;
     }
 
@@ -732,7 +745,7 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("§e/portal setmessage <portal> <open|close|end> <msg> §7– Set a portal message (hex: &#RRGGBB, {portal}, {world})");
         sender.sendMessage("§e/portal setcleaningworld <world> <true|false> §7– Clean a world (entities+blocks, r=800) when game ends");
         sender.sendMessage("§e/portal setworldleavable <sourceWorld> <targetWorld> §7– Teleport players to targetWorld whenever they leave sourceWorld");
-        sender.sendMessage("§e/portal setportaldynamicdelay <portal> <gameSec> <winnersWorld> §7– Dynamic mode: portal waits for 2+ players, then runs game for gameSec; last survivor wins");
+        sender.sendMessage("§e/portal setportaldynamicdelay <portal> <countdownSec> <gameSec> <winnersWorld> §7– Dynamic mode: countdown then game for gameSec; last survivor wins");
         sender.sendMessage("§e/portal reload §7– Reload config and portals");
     }
 
@@ -818,10 +831,10 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             List<String> allWorlds = new ArrayList<>(plugin.getWorldManager().listLoadedWorlds());
             allWorlds.addAll(plugin.getWorldManager().listUnloadedWorlds());
             StringUtil.copyPartialMatches(args[2], allWorlds, completions);
-        } else if (args.length == 4 && args[0].equalsIgnoreCase("setportaldynamicdelay")) {
+        } else if (args.length == 5 && args[0].equalsIgnoreCase("setportaldynamicdelay")) {
             List<String> allWorlds = new ArrayList<>(plugin.getWorldManager().listLoadedWorlds());
             allWorlds.addAll(plugin.getWorldManager().listUnloadedWorlds());
-            StringUtil.copyPartialMatches(args[3], allWorlds, completions);
+            StringUtil.copyPartialMatches(args[4], allWorlds, completions);
         }
 
         return completions;

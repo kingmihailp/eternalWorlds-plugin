@@ -37,9 +37,9 @@ public class DynamicDelayManager {
     private static final long END_GRACE_TICKS = 60L;  // 3 s
 
     /** Persistent config stored per portal. */
-    public record DynamicConfig(int gameSeconds, String winnersWorld) {}
+    public record DynamicConfig(int countdownSeconds, int gameSeconds, String winnersWorld) {}
 
-    private enum Phase { WAITING, GAME_RUNNING, GAME_ENDING }
+    private enum Phase { WAITING, COUNTDOWN, GAME_RUNNING, GAME_ENDING }
 
     private final EternalWorldsPlugin plugin;
     private final File                dataFile;
@@ -65,9 +65,10 @@ public class DynamicDelayManager {
         if (!cfg.isConfigurationSection("portals")) return;
         for (String key : cfg.getConfigurationSection("portals").getKeys(false)) {
             String path    = "portals." + key;
-            int    gameSec = cfg.getInt(path + ".game-seconds",  120);
-            String world   = cfg.getString(path + ".winners-world", "world");
-            configs.put(key.toLowerCase(), new DynamicConfig(gameSec, world));
+            int    cdSec   = cfg.getInt(path + ".countdown-seconds", 30);
+            int    gameSec = cfg.getInt(path + ".game-seconds",      120);
+            String world   = cfg.getString(path + ".winners-world",  "world");
+            configs.put(key.toLowerCase(), new DynamicConfig(cdSec, gameSec, world));
         }
     }
 
@@ -75,8 +76,9 @@ public class DynamicDelayManager {
         YamlConfiguration cfg = new YamlConfiguration();
         configs.forEach((name, dc) -> {
             String path = "portals." + name;
-            cfg.set(path + ".game-seconds",  dc.gameSeconds());
-            cfg.set(path + ".winners-world", dc.winnersWorld());
+            cfg.set(path + ".countdown-seconds", dc.countdownSeconds());
+            cfg.set(path + ".game-seconds",      dc.gameSeconds());
+            cfg.set(path + ".winners-world",     dc.winnersWorld());
         });
         try {
             cfg.save(dataFile);
@@ -91,9 +93,9 @@ public class DynamicDelayManager {
      * Activates dynamic-delay mode for the portal.
      * Any regular scheduler cycle for this portal is stopped first.
      */
-    public void startDynamic(String portalName, int gameSeconds, String winnersWorld) {
+    public void startDynamic(String portalName, int countdownSeconds, int gameSeconds, String winnersWorld) {
         String key = portalName.toLowerCase();
-        configs.put(key, new DynamicConfig(gameSeconds, winnersWorld));
+        configs.put(key, new DynamicConfig(countdownSeconds, gameSeconds, winnersWorld));
         save();
         // A regular cycle and a dynamic cycle must not run simultaneously.
         plugin.getPortalSchedulerManager().stopCycle(portalName);
@@ -151,10 +153,45 @@ public class DynamicDelayManager {
             if (p == null) return;
             World destWorld = plugin.getServer().getWorld(p.getDestinationWorld());
             if (destWorld != null && destWorld.getPlayers().size() >= 2) {
-                beginGame(key);
+                startCountdown(key);
             }
         }, POLL_TICKS, POLL_TICKS);
         tasks.put(key, pollTask);
+    }
+
+    /** Phase 1b: countdown before the game starts; cancels back to WAITING if players drop below 2. */
+    private void startCountdown(String key) {
+        cancelTask(key);
+        phases.put(key, Phase.COUNTDOWN);
+
+        DynamicConfig dc = configs.get(key);
+        if (dc == null) { startWaiting(key); return; }
+
+        Portal portal = plugin.getPortalManager().getPortal(key);
+        if (portal == null) { startWaiting(key); return; }
+        String gameWorldName = portal.getDestinationWorld();
+
+        int[] remaining = { dc.countdownSeconds() };
+
+        BukkitTask cdTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
+            if (phases.get(key) != Phase.COUNTDOWN) return;
+
+            World destWorld = plugin.getServer().getWorld(gameWorldName);
+            if (destWorld == null || destWorld.getPlayers().size() < 2) {
+                startWaiting(key);
+                return;
+            }
+
+            if (remaining[0] <= 0) {
+                beginGame(key);
+                return;
+            }
+
+            String msg = ColorUtil.parse("&e[Portals] Игра начнется через &c" + remaining[0] + " &eсек...");
+            for (Player p : destWorld.getPlayers()) p.sendMessage(msg);
+            remaining[0]--;
+        }, 20L, 20L);
+        tasks.put(key, cdTask);
     }
 
     /** Phase 2: close the portal, start the game timer, monitor for last survivor. */
