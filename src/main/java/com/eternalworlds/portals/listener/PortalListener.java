@@ -5,7 +5,6 @@ import com.eternalworlds.portals.manager.SelectionManager;
 import com.eternalworlds.portals.manager.WorldConfigManager;
 import com.eternalworlds.portals.model.Portal;
 import org.bukkit.GameMode;
-import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
@@ -22,6 +21,7 @@ import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerBedEnterEvent;
 import org.bukkit.event.player.PlayerPortalEvent;
+import org.bukkit.event.player.PlayerSetSpawnEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.inventory.EquipmentSlot;
@@ -257,11 +257,19 @@ public class PortalListener implements Listener {
 
     // ---- Bed sleeping ----
 
-    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGH)
     public void onPlayerBedEnter(PlayerBedEnterEvent event) {
         if (!plugin.getWorldConfigManager().isBedSleepingAllowed(event.getPlayer().getWorld().getName())) {
             event.setUseBed(org.bukkit.event.Event.Result.DENY);
             event.getPlayer().sendMessage("§c[Portals] Sleeping is disabled in this world.");
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onPlayerSetSpawn(PlayerSetSpawnEvent event) {
+        if (event.getCause() != PlayerSetSpawnEvent.Cause.BED) return;
+        if (!plugin.getWorldConfigManager().isBedSleepingAllowed(event.getPlayer().getWorld().getName())) {
+            event.setCancelled(true);
         }
     }
 
