@@ -18,6 +18,7 @@ import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.player.PlayerPortalEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.inventory.EquipmentSlot;
@@ -245,6 +246,30 @@ public class PortalListener implements Listener {
         if (spawn == null) return;
 
         event.setRespawnLocation(spawn.toLocation(event.getPlayer().getWorld()));
+    }
+
+    // ---- Nether / End portal blocking ----
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onPlayerPortal(PlayerPortalEvent event) {
+        Player player    = event.getPlayer();
+        String worldName = player.getWorld().getName();
+
+        switch (event.getCause()) {
+            case NETHER_PORTAL -> {
+                if (!plugin.getWorldConfigManager().isNetherAllowed(worldName)) {
+                    event.setCancelled(true);
+                    player.sendMessage("§c[Portals] Нether portals are disabled in this world.");
+                }
+            }
+            case END_PORTAL, END_GATEWAY -> {
+                if (!plugin.getWorldConfigManager().isEndAllowed(worldName)) {
+                    event.setCancelled(true);
+                    player.sendMessage("§c[Portals] End portals are disabled in this world.");
+                }
+            }
+            default -> { /* other causes — no restriction */ }
+        }
     }
 
     // ---- Per-world PvP ----

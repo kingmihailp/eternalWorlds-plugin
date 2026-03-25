@@ -65,6 +65,16 @@ public class WorldConfigManager {
      * When set, any player who leaves this world is immediately teleported to the target world.
      */
     private final Map<String, String>            worldLeavable        = new HashMap<>();
+    /**
+     * world name (lower-case) -> nether portal allowed.
+     * When false, vanilla nether portals are blocked in that world.
+     */
+    private final Map<String, Boolean>           worldNetherAllowed   = new HashMap<>();
+    /**
+     * world name (lower-case) -> end portal allowed.
+     * When false, vanilla end portals and end gateways are blocked in that world.
+     */
+    private final Map<String, Boolean>           worldEndAllowed      = new HashMap<>();
 
     public WorldConfigManager(EternalWorldsPlugin plugin) {
         this.plugin = plugin;
@@ -83,6 +93,8 @@ public class WorldConfigManager {
         worldElimination.clear();
         worldCleaning.clear();
         worldLeavable.clear();
+        worldNetherAllowed.clear();
+        worldEndAllowed.clear();
         if (!file.exists()) return;
 
         YamlConfiguration cfg = YamlConfiguration.loadConfiguration(file);
@@ -132,6 +144,13 @@ public class WorldConfigManager {
             String leavablePath = "worlds." + world + ".leavable-target";
             if (cfg.contains(leavablePath)) worldLeavable.put(key, cfg.getString(leavablePath));
 
+            // Nether / End portal access
+            String netherPath = "worlds." + world + ".nether-allowed";
+            if (cfg.contains(netherPath)) worldNetherAllowed.put(key, cfg.getBoolean(netherPath));
+
+            String endPath = "worlds." + world + ".end-allowed";
+            if (cfg.contains(endPath)) worldEndAllowed.put(key, cfg.getBoolean(endPath));
+
             // Spawn
             String spawnPath = "worlds." + world + ".spawn";
             if (cfg.isConfigurationSection(spawnPath)) {
@@ -155,6 +174,8 @@ public class WorldConfigManager {
         worlds.addAll(worldElimination.keySet());
         worlds.addAll(worldCleaning.keySet());
         worlds.addAll(worldLeavable.keySet());
+        worlds.addAll(worldNetherAllowed.keySet());
+        worlds.addAll(worldEndAllowed.keySet());
 
         YamlConfiguration cfg = new YamlConfiguration();
         for (String world : worlds) {
@@ -175,6 +196,12 @@ public class WorldConfigManager {
 
             String leavable = worldLeavable.get(world);
             if (leavable != null) cfg.set("worlds." + world + ".leavable-target", leavable);
+
+            Boolean netherAllowed = worldNetherAllowed.get(world);
+            if (netherAllowed != null) cfg.set("worlds." + world + ".nether-allowed", netherAllowed);
+
+            Boolean endAllowed = worldEndAllowed.get(world);
+            if (endAllowed != null) cfg.set("worlds." + world + ".end-allowed", endAllowed);
 
             EliminationConfig ec = worldElimination.get(world);
             if (ec != null) {
@@ -314,6 +341,32 @@ public class WorldConfigManager {
 
     public void removeSpawn(String worldName) {
         worldSpawns.remove(worldName.toLowerCase());
+        save();
+    }
+
+    // ---- Nether portal access ----
+
+    /** Returns false if nether portals are explicitly blocked in this world, true otherwise. */
+    public boolean isNetherAllowed(String worldName) {
+        Boolean val = worldNetherAllowed.get(worldName.toLowerCase());
+        return val == null || val; // default: allowed
+    }
+
+    public void setNetherAllowed(String worldName, boolean allowed) {
+        worldNetherAllowed.put(worldName.toLowerCase(), allowed);
+        save();
+    }
+
+    // ---- End portal access ----
+
+    /** Returns false if end portals/gateways are explicitly blocked in this world, true otherwise. */
+    public boolean isEndAllowed(String worldName) {
+        Boolean val = worldEndAllowed.get(worldName.toLowerCase());
+        return val == null || val; // default: allowed
+    }
+
+    public void setEndAllowed(String worldName, boolean allowed) {
+        worldEndAllowed.put(worldName.toLowerCase(), allowed);
         save();
     }
 }

@@ -30,7 +30,8 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             "setportaldelay", "stopportaldelay",
             "setrandomplayerpoint", "clearrandompoints",
             "setwinnersdest", "setmessage", "setcleaningworld",
-            "setworldleavable", "setportaldynamicdelay", "stopdynamicdelay"
+            "setworldleavable", "setportaldynamicdelay", "stopdynamicdelay",
+            "allownetherperworld", "allowendperworld"
     );
 
     private static final List<String> MESSAGE_TYPES = Arrays.asList("open", "close", "end");
@@ -91,6 +92,8 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             case "setworldleavable"      -> cmdSetWorldLeavable(sender, args);
             case "setportaldynamicdelay" -> cmdSetPortalDynamicDelay(sender, args);
             case "stopdynamicdelay"      -> cmdStopDynamicDelay(sender, args);
+            case "allownetherperworld"   -> cmdAllowNetherPerWorld(sender, args);
+            case "allowendperworld"      -> cmdAllowEndPerWorld(sender, args);
             default                      -> { sendHelp(sender); yield true; }
         };
     }
@@ -723,6 +726,44 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
+    // /portal allownetherperworld <worldName> <true|false>
+    private boolean cmdAllowNetherPerWorld(CommandSender sender, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage("§cUsage: /portal allownetherperworld <worldName> <true|false>");
+            return true;
+        }
+        String worldName = args[1];
+        String value     = args[2].toLowerCase();
+        if (!value.equals("true") && !value.equals("false")) {
+            sender.sendMessage("§cInvalid value: §e" + value + "§c. Use §ftrue §cor §ffalse§c.");
+            return true;
+        }
+        boolean allowed = value.equals("true");
+        plugin.getWorldConfigManager().setNetherAllowed(worldName, allowed);
+        sender.sendMessage("§a[Portals] Nether portals in world §e" + worldName
+                + (allowed ? " §aenabled." : " §cdisabled."));
+        return true;
+    }
+
+    // /portal allowendperworld <worldName> <true|false>
+    private boolean cmdAllowEndPerWorld(CommandSender sender, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage("§cUsage: /portal allowendperworld <worldName> <true|false>");
+            return true;
+        }
+        String worldName = args[1];
+        String value     = args[2].toLowerCase();
+        if (!value.equals("true") && !value.equals("false")) {
+            sender.sendMessage("§cInvalid value: §e" + value + "§c. Use §ftrue §cor §ffalse§c.");
+            return true;
+        }
+        boolean allowed = value.equals("true");
+        plugin.getWorldConfigManager().setEndAllowed(worldName, allowed);
+        sender.sendMessage("§a[Portals] End portals in world §e" + worldName
+                + (allowed ? " §aenabled." : " §cdisabled."));
+        return true;
+    }
+
     // /portal reload
     private boolean cmdReload(CommandSender sender) {
         plugin.reloadConfig();
@@ -764,6 +805,8 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("§e/portal setworldleavable <sourceWorld> <targetWorld> §7– Teleport players to targetWorld whenever they leave sourceWorld");
         sender.sendMessage("§e/portal setportaldynamicdelay <portal> <countdownSec> <gameSec> <winnersWorld> §7– Dynamic mode: countdown then game for gameSec; last survivor wins");
         sender.sendMessage("§e/portal stopdynamicdelay <portal> §7– Remove dynamic delay mode from portal");
+        sender.sendMessage("§e/portal allownetherperworld <world> <true|false> §7– Allow or block vanilla nether portals in a world");
+        sender.sendMessage("§e/portal allowendperworld <world> <true|false> §7– Allow or block vanilla end portals/gateways in a world");
         sender.sendMessage("§e/portal reload §7– Reload config and portals");
     }
 
@@ -803,7 +846,8 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
                     StringUtil.copyPartialMatches(args[1], worlds, completions);
                 }
                 case "travel", "worldgamemode", "worldpvp", "worldclearinv",
-                        "worlditemrandomization", "seteliminationylevel", "setcleaningworld" -> {
+                        "worlditemrandomization", "seteliminationylevel", "setcleaningworld",
+                        "allownetherperworld", "allowendperworld" -> {
                     List<String> allWorlds = new ArrayList<>(plugin.getWorldManager().listLoadedWorlds());
                     allWorlds.addAll(plugin.getWorldManager().listUnloadedWorlds());
                     StringUtil.copyPartialMatches(args[1], allWorlds, completions);
@@ -834,6 +878,10 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         } else if (args.length == 3 && args[0].equalsIgnoreCase("worldpvp")) {
             StringUtil.copyPartialMatches(args[2], PVP_VALUES, completions);
         } else if (args.length == 3 && args[0].equalsIgnoreCase("worldclearinv")) {
+            StringUtil.copyPartialMatches(args[2], BOOL_VALUES, completions);
+        } else if (args.length == 3 && args[0].equalsIgnoreCase("allownetherperworld")) {
+            StringUtil.copyPartialMatches(args[2], BOOL_VALUES, completions);
+        } else if (args.length == 3 && args[0].equalsIgnoreCase("allowendperworld")) {
             StringUtil.copyPartialMatches(args[2], BOOL_VALUES, completions);
         } else if (args.length == 3 && args[0].equalsIgnoreCase("worlditemrandomization")) {
             StringUtil.copyPartialMatches(args[2], PVP_VALUES, completions);
