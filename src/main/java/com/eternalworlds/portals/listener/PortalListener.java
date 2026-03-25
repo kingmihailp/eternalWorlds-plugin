@@ -21,7 +21,7 @@ import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerBedEnterEvent;
 import org.bukkit.event.player.PlayerPortalEvent;
-import io.papermc.paper.event.player.PlayerSetSpawnEvent;
+import org.bukkit.Tag;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.inventory.EquipmentSlot;
@@ -258,18 +258,21 @@ public class PortalListener implements Listener {
     // ---- Bed sleeping ----
 
     @EventHandler(priority = EventPriority.HIGH)
-    public void onPlayerBedEnter(PlayerBedEnterEvent event) {
+    public void onPlayerBedInteract(PlayerInteractEvent event) {
+        if (event.getAction() != Action.RIGHT_CLICK_BLOCK) return;
+        if (event.getHand() != EquipmentSlot.HAND) return;
+        if (event.getClickedBlock() == null) return;
+        if (!Tag.BEDS.isTagged(event.getClickedBlock().getType())) return;
         if (!plugin.getWorldConfigManager().isBedSleepingAllowed(event.getPlayer().getWorld().getName())) {
-            event.setUseBed(org.bukkit.event.Event.Result.DENY);
+            event.setCancelled(true);
             event.getPlayer().sendMessage("§c[Portals] Sleeping is disabled in this world.");
         }
     }
 
     @EventHandler(priority = EventPriority.HIGH)
-    public void onPlayerSetSpawn(PlayerSetSpawnEvent event) {
-        if (event.getCause() != PlayerSetSpawnEvent.Cause.BED) return;
+    public void onPlayerBedEnter(PlayerBedEnterEvent event) {
         if (!plugin.getWorldConfigManager().isBedSleepingAllowed(event.getPlayer().getWorld().getName())) {
-            event.setCancelled(true);
+            event.setUseBed(org.bukkit.event.Event.Result.DENY);
         }
     }
 
