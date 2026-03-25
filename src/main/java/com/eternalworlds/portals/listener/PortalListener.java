@@ -19,6 +19,7 @@ import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.player.PlayerBedEnterEvent;
 import org.bukkit.event.player.PlayerPortalEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
@@ -247,6 +248,16 @@ public class PortalListener implements Listener {
         if (spawn == null) return;
 
         event.setRespawnLocation(spawn.toLocation(event.getPlayer().getWorld()));
+    }
+
+    // ---- Bed sleeping ----
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onPlayerBedEnter(PlayerBedEnterEvent event) {
+        if (!plugin.getWorldConfigManager().isBedSleepingAllowed(event.getPlayer().getWorld().getName())) {
+            event.setUseBed(PlayerBedEnterEvent.BedEnterResult.NOT_POSSIBLE_HERE);
+            event.getPlayer().sendMessage("§c[Portals] Sleeping is disabled in this world.");
+        }
     }
 
     // ---- Building height limit ----

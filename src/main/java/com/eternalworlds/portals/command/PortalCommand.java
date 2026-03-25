@@ -33,7 +33,7 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             "setworldleavable", "setportaldynamicdelay", "startdynamicdelay",
             "stopdynamicdelay", "removedynamicdelay",
             "allownetherperworld", "allowendperworld",
-            "setbuildingheightperworld"
+            "setbuildingheightperworld", "allowbedsleeping"
     );
 
     private static final List<String> MESSAGE_TYPES = Arrays.asList("open", "close", "end");
@@ -99,6 +99,7 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             case "allownetherperworld"      -> cmdAllowNetherPerWorld(sender, args);
             case "allowendperworld"         -> cmdAllowEndPerWorld(sender, args);
             case "setbuildingheightperworld"-> cmdSetBuildingHeightPerWorld(sender, args);
+            case "allowbedsleeping"         -> cmdAllowBedSleeping(sender, args);
             default                         -> { sendHelp(sender); yield true; }
         };
     }
@@ -813,6 +814,25 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
+    // /portal allowbedsleeping <worldName> <true|false>
+    private boolean cmdAllowBedSleeping(CommandSender sender, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage("§cUsage: /portal allowbedsleeping <worldName> <true|false>");
+            return true;
+        }
+        String worldName = args[1];
+        String value     = args[2].toLowerCase();
+        if (!value.equals("true") && !value.equals("false")) {
+            sender.sendMessage("§cInvalid value: §e" + value + "§c. Use §ftrue §cor §ffalse§c.");
+            return true;
+        }
+        boolean allowed = value.equals("true");
+        plugin.getWorldConfigManager().setBedSleepingAllowed(worldName, allowed);
+        sender.sendMessage("§a[Portals] Bed sleeping in world §e" + worldName
+                + (allowed ? " §aenabled." : " §cdisabled."));
+        return true;
+    }
+
     // /portal setbuildingheightperworld <worldName> <maxY|remove>
     private boolean cmdSetBuildingHeightPerWorld(CommandSender sender, String[] args) {
         if (args.length < 3) {
@@ -887,6 +907,7 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("§e/portal removedynamicdelay <portal> §7– Delete the dynamic delay config and stop the cycle");
         sender.sendMessage("§e/portal allownetherperworld <world> <true|false> §7– Allow or block vanilla nether portals in a world");
         sender.sendMessage("§e/portal allowendperworld <world> <true|false> §7– Allow or block vanilla end portals/gateways in a world");
+        sender.sendMessage("§e/portal allowbedsleeping <world> <true|false> §7– Allow or block bed sleeping (spawn point setting) in a world");
         sender.sendMessage("§e/portal setbuildingheightperworld <world> <maxY|remove> §7– Limit block placement above Y in a world (remove to clear)");
         sender.sendMessage("§e/portal reload §7– Reload config and portals");
     }
@@ -929,7 +950,7 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
                 case "travel", "worldgamemode", "worldpvp", "worldclearinv",
                         "worlditemrandomization", "seteliminationylevel", "setcleaningworld",
                         "allownetherperworld", "allowendperworld",
-                        "setbuildingheightperworld" -> {
+                        "setbuildingheightperworld", "allowbedsleeping" -> {
                     List<String> allWorlds = new ArrayList<>(plugin.getWorldManager().listLoadedWorlds());
                     allWorlds.addAll(plugin.getWorldManager().listUnloadedWorlds());
                     StringUtil.copyPartialMatches(args[1], allWorlds, completions);
@@ -982,6 +1003,8 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         } else if (args.length == 3 && args[0].equalsIgnoreCase("allownetherperworld")) {
             StringUtil.copyPartialMatches(args[2], BOOL_VALUES, completions);
         } else if (args.length == 3 && args[0].equalsIgnoreCase("allowendperworld")) {
+            StringUtil.copyPartialMatches(args[2], BOOL_VALUES, completions);
+        } else if (args.length == 3 && args[0].equalsIgnoreCase("allowbedsleeping")) {
             StringUtil.copyPartialMatches(args[2], BOOL_VALUES, completions);
         } else if (args.length == 3 && args[0].equalsIgnoreCase("setbuildingheightperworld")) {
             StringUtil.copyPartialMatches(args[2], List.of("remove"), completions);

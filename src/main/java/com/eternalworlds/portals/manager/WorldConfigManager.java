@@ -80,6 +80,11 @@ public class WorldConfigManager {
      * Null means no restriction.
      */
     private final Map<String, Integer>           worldBuildingHeight  = new HashMap<>();
+    /**
+     * world name (lower-case) -> bed sleeping allowed.
+     * When false, players cannot sleep in a bed (spawn point is not set).
+     */
+    private final Map<String, Boolean>           worldBedSleeping     = new HashMap<>();
 
     public WorldConfigManager(EternalWorldsPlugin plugin) {
         this.plugin = plugin;
@@ -101,6 +106,7 @@ public class WorldConfigManager {
         worldNetherAllowed.clear();
         worldEndAllowed.clear();
         worldBuildingHeight.clear();
+        worldBedSleeping.clear();
         if (!file.exists()) return;
 
         YamlConfiguration cfg = YamlConfiguration.loadConfiguration(file);
@@ -161,6 +167,10 @@ public class WorldConfigManager {
             String heightPath = "worlds." + world + ".building-height";
             if (cfg.contains(heightPath)) worldBuildingHeight.put(key, cfg.getInt(heightPath));
 
+            // Bed sleeping
+            String bedPath = "worlds." + world + ".bed-sleeping";
+            if (cfg.contains(bedPath)) worldBedSleeping.put(key, cfg.getBoolean(bedPath));
+
             // Spawn
             String spawnPath = "worlds." + world + ".spawn";
             if (cfg.isConfigurationSection(spawnPath)) {
@@ -187,6 +197,7 @@ public class WorldConfigManager {
         worlds.addAll(worldNetherAllowed.keySet());
         worlds.addAll(worldEndAllowed.keySet());
         worlds.addAll(worldBuildingHeight.keySet());
+        worlds.addAll(worldBedSleeping.keySet());
 
         YamlConfiguration cfg = new YamlConfiguration();
         for (String world : worlds) {
@@ -216,6 +227,9 @@ public class WorldConfigManager {
 
             Integer buildingHeight = worldBuildingHeight.get(world);
             if (buildingHeight != null) cfg.set("worlds." + world + ".building-height", buildingHeight);
+
+            Boolean bedSleeping = worldBedSleeping.get(world);
+            if (bedSleeping != null) cfg.set("worlds." + world + ".bed-sleeping", bedSleeping);
 
             EliminationConfig ec = worldElimination.get(world);
             if (ec != null) {
@@ -398,6 +412,19 @@ public class WorldConfigManager {
 
     public void removeBuildingHeight(String worldName) {
         worldBuildingHeight.remove(worldName.toLowerCase());
+        save();
+    }
+
+    // ---- Bed sleeping ----
+
+    /** Returns false if bed sleeping is explicitly disabled in this world, true otherwise. */
+    public boolean isBedSleepingAllowed(String worldName) {
+        Boolean val = worldBedSleeping.get(worldName.toLowerCase());
+        return val == null || val; // default: allowed
+    }
+
+    public void setBedSleepingAllowed(String worldName, boolean allowed) {
+        worldBedSleeping.put(worldName.toLowerCase(), allowed);
         save();
     }
 }
