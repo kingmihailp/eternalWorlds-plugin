@@ -255,7 +255,7 @@ public class PortalListener implements Listener {
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onPlayerBedEnter(PlayerBedEnterEvent event) {
         if (!plugin.getWorldConfigManager().isBedSleepingAllowed(event.getPlayer().getWorld().getName())) {
-            event.setUseBed(PlayerBedEnterEvent.BedEnterResult.NOT_POSSIBLE_HERE);
+            event.setUseBed(org.bukkit.event.Event.Result.DENY);
             event.getPlayer().sendMessage("§c[Portals] Sleeping is disabled in this world.");
         }
     }
