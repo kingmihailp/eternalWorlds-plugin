@@ -30,7 +30,8 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             "setportaldelay", "stopportaldelay",
             "setrandomplayerpoint", "clearrandompoints",
             "setwinnersdest", "setmessage", "setcleaningworld",
-            "setworldleavable", "setportaldynamicdelay", "stopdynamicdelay",
+            "setworldleavable", "setportaldynamicdelay", "startdynamicdelay",
+            "stopdynamicdelay", "removedynamicdelay",
             "allownetherperworld", "allowendperworld",
             "setbuildingheightperworld"
     );
@@ -92,7 +93,9 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             case "setcleaningworld"      -> cmdSetCleaningWorld(sender, args);
             case "setworldleavable"      -> cmdSetWorldLeavable(sender, args);
             case "setportaldynamicdelay" -> cmdSetPortalDynamicDelay(sender, args);
+            case "startdynamicdelay"     -> cmdStartDynamicDelay(sender, args);
             case "stopdynamicdelay"      -> cmdStopDynamicDelay(sender, args);
+            case "removedynamicdelay"    -> cmdRemoveDynamicDelay(sender, args);
             case "allownetherperworld"      -> cmdAllowNetherPerWorld(sender, args);
             case "allowendperworld"         -> cmdAllowEndPerWorld(sender, args);
             case "setbuildingheightperworld"-> cmdSetBuildingHeightPerWorld(sender, args);
@@ -187,11 +190,12 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         p.setEnabled(enabled);
         plugin.getPortalManager().savePortals();
         sender.sendMessage("§a[Portals] Portal §e" + p.getName() + (enabled ? " §aenabled." : " §cdisabled."));
-        // If disabling a portal that has a dynamic delay cycle, stop the cycle too —
+        // If disabling a portal that has an active dynamic delay cycle, stop the cycle —
         // otherwise the cycle will re-enable the portal on the next phase transition.
-        if (!enabled && plugin.getDynamicDelayManager().hasDynamic(p.getName())) {
+        // The config is preserved; use /portal startdynamicdelay to restart.
+        if (!enabled && plugin.getDynamicDelayManager().isActive(p.getName())) {
             plugin.getDynamicDelayManager().stopDynamic(p.getName());
-            sender.sendMessage("§7[Portals] Dynamic delay for §e" + p.getName() + " §7was also stopped. Use /portal setportaldynamicdelay to restart it.");
+            sender.sendMessage("§7[Portals] Dynamic delay cycle for §e" + p.getName() + " §7was also stopped (config preserved).");
         }
         return true;
     }
@@ -711,10 +715,30 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
-        plugin.getDynamicDelayManager().startDynamic(portalName, countdownSec, gameSec, winnersWorld);
-        sender.sendMessage("§a[Portals] Dynamic delay activated for portal §e" + portalName
+        plugin.getDynamicDelayManager().saveConfig(portalName, countdownSec, gameSec, winnersWorld);
+        sender.sendMessage("§a[Portals] Dynamic delay config saved for portal §e" + portalName
                 + "§a: §b" + countdownSec + "s §acountdown, §b" + gameSec + "s §agame time, winners → §b" + winnersWorld + "§a.");
-        sender.sendMessage("§7Portal will stay open until 2+ players are in the destination world.");
+        sender.sendMessage("§7Use §f/portal startdynamicdelay " + portalName + " §7to activate the cycle.");
+        return true;
+    }
+
+    // /portal startdynamicdelay <portalName>
+    private boolean cmdStartDynamicDelay(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            sender.sendMessage("§cUsage: /portal startdynamicdelay <portalName>");
+            return true;
+        }
+        String portalName = args[1];
+        if (!plugin.getDynamicDelayManager().hasDynamic(portalName)) {
+            sender.sendMessage("§cPortal §e" + portalName + " §chas no dynamic delay config. Use §f/portal setportaldynamicdelay §cfirst.");
+            return true;
+        }
+        if (plugin.getDynamicDelayManager().isActive(portalName)) {
+            sender.sendMessage("§ePortal §b" + portalName + " §ealready has an active dynamic delay cycle.");
+            return true;
+        }
+        plugin.getDynamicDelayManager().startDynamic(portalName);
+        sender.sendMessage("§a[Portals] Dynamic delay cycle started for portal §e" + portalName + "§a.");
         return true;
     }
 
@@ -725,12 +749,29 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             return true;
         }
         String portalName = args[1];
-        if (!plugin.getDynamicDelayManager().hasDynamic(portalName)) {
-            sender.sendMessage("§cPortal §e" + portalName + " §cdoes not have dynamic delay configured.");
+        if (!plugin.getDynamicDelayManager().isActive(portalName)) {
+            sender.sendMessage("§cPortal §e" + portalName + " §cdoes not have an active dynamic delay cycle.");
             return true;
         }
         plugin.getDynamicDelayManager().stopDynamic(portalName);
-        sender.sendMessage("§a[Portals] Dynamic delay removed for portal §e" + portalName + "§a.");
+        sender.sendMessage("§a[Portals] Dynamic delay cycle stopped for portal §e" + portalName
+                + "§a. Config is preserved — use §f/portal startdynamicdelay §ato restart.");
+        return true;
+    }
+
+    // /portal removedynamicdelay <portalName>
+    private boolean cmdRemoveDynamicDelay(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            sender.sendMessage("§cUsage: /portal removedynamicdelay <portalName>");
+            return true;
+        }
+        String portalName = args[1];
+        if (!plugin.getDynamicDelayManager().hasDynamic(portalName)) {
+            sender.sendMessage("§cPortal §e" + portalName + " §chas no dynamic delay config.");
+            return true;
+        }
+        plugin.getDynamicDelayManager().removeConfig(portalName);
+        sender.sendMessage("§a[Portals] Dynamic delay config removed for portal §e" + portalName + "§a.");
         return true;
     }
 
@@ -840,8 +881,10 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("§e/portal setmessage <portal> <open|close|end> <msg> §7– Set a portal message (hex: &#RRGGBB, {portal}, {world})");
         sender.sendMessage("§e/portal setcleaningworld <world> <true|false> §7– Clean a world (entities+blocks, r=800) when game ends");
         sender.sendMessage("§e/portal setworldleavable <sourceWorld> <targetWorld> §7– Teleport players to targetWorld whenever they leave sourceWorld");
-        sender.sendMessage("§e/portal setportaldynamicdelay <portal> <countdownSec> <gameSec> <winnersWorld> §7– Dynamic mode: countdown then game for gameSec; last survivor wins");
-        sender.sendMessage("§e/portal stopdynamicdelay <portal> §7– Remove dynamic delay mode from portal");
+        sender.sendMessage("§e/portal setportaldynamicdelay <portal> <cdSec> <gameSec> <winnersWorld> §7– Save dynamic delay config (does not start cycle)");
+        sender.sendMessage("§e/portal startdynamicdelay <portal> §7– Start the dynamic delay cycle (config must exist)");
+        sender.sendMessage("§e/portal stopdynamicdelay <portal> §7– Stop the cycle (config is preserved)");
+        sender.sendMessage("§e/portal removedynamicdelay <portal> §7– Delete the dynamic delay config and stop the cycle");
         sender.sendMessage("§e/portal allownetherperworld <world> <true|false> §7– Allow or block vanilla nether portals in a world");
         sender.sendMessage("§e/portal allowendperworld <world> <true|false> §7– Allow or block vanilla end portals/gateways in a world");
         sender.sendMessage("§e/portal setbuildingheightperworld <world> <maxY|remove> §7– Limit block placement above Y in a world (remove to clear)");
@@ -899,12 +942,30 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
                             .stream().map(Portal::getName).toList();
                     StringUtil.copyPartialMatches(args[1], portalNames2, completions);
                 }
+                case "startdynamicdelay" -> {
+                    // Portals with config but no active cycle
+                    List<String> startable = plugin.getPortalManager().getAllPortals()
+                            .stream().map(Portal::getName)
+                            .filter(n -> plugin.getDynamicDelayManager().hasDynamic(n)
+                                    && !plugin.getDynamicDelayManager().isActive(n))
+                            .toList();
+                    StringUtil.copyPartialMatches(args[1], startable, completions);
+                }
                 case "stopdynamicdelay" -> {
-                    List<String> dynamicPortals = plugin.getPortalManager().getAllPortals()
+                    // Only portals with an active cycle
+                    List<String> active = plugin.getPortalManager().getAllPortals()
+                            .stream().map(Portal::getName)
+                            .filter(n -> plugin.getDynamicDelayManager().isActive(n))
+                            .toList();
+                    StringUtil.copyPartialMatches(args[1], active, completions);
+                }
+                case "removedynamicdelay" -> {
+                    // All portals with a config
+                    List<String> configured = plugin.getPortalManager().getAllPortals()
                             .stream().map(Portal::getName)
                             .filter(n -> plugin.getDynamicDelayManager().hasDynamic(n))
                             .toList();
-                    StringUtil.copyPartialMatches(args[1], dynamicPortals, completions);
+                    StringUtil.copyPartialMatches(args[1], configured, completions);
                 }
                 case "setworldleavable" -> {
                     List<String> allWorlds = new ArrayList<>(plugin.getWorldManager().listLoadedWorlds());

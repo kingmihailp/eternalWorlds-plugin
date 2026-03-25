@@ -18,9 +18,13 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Manages "dynamic delay" portals.
+ * Manages "dynamic delay" portal configs and their lifecycle cycles.
  *
- * Lifecycle:
+ * Config and cycle are separate concepts:
+ *  - A config can exist without a running cycle (active=false).
+ *  - A cycle can only run when a config exists.
+ *
+ * Lifecycle phases (when cycle is running):
  *  WAITING      – portal open; ≤1 player in game world.
  *                 Players are frozen. ActionBar: waiting-actionbar.
  *  COUNTDOWN    – 2+ players detected; countdown to game start.
@@ -54,12 +58,14 @@ public class DynamicDelayManager {
 
     /**
      * Persistent config stored per portal.
+     * {@code active} — whether the cycle should be running (persisted).
      * Message fields are nullable — null means "use default".
      */
     public record DynamicConfig(
             int    countdownSeconds,
             int    gameSeconds,
             String winnersWorld,
+            boolean active,
             // Nullable — null → use DEF_* constant
             String waitingActionbar,
             String countdownActionbar,
@@ -68,7 +74,14 @@ public class DynamicDelayManager {
             String winnersTitle,
             String winnersLine,
             String winnersFooter
-    ) {}
+    ) {
+        /** Returns a copy with the given active flag. */
+        DynamicConfig withActive(boolean active) {
+            return new DynamicConfig(countdownSeconds, gameSeconds, winnersWorld, active,
+                    waitingActionbar, countdownActionbar, gameActionbar,
+                    winnersHeader, winnersTitle, winnersLine, winnersFooter);
+        }
+    }
 
     private enum Phase { WAITING, COUNTDOWN, GAME_RUNNING, GAME_ENDING }
 
@@ -84,7 +97,7 @@ public class DynamicDelayManager {
      *   "<portal>:actionbar" – waiting-phase actionbar + freeze task
      */
     private final Map<String, BukkitTask>    tasks   = new HashMap<>();
-    /** portalName (lower-case) → current lifecycle phase */
+    /** portalName (lower-case) → current lifecycle phase (only present when cycle is running) */
     private final Map<String, Phase>         phases  = new HashMap<>();
 
     public DynamicDelayManager(EternalWorldsPlugin plugin) {
@@ -104,6 +117,7 @@ public class DynamicDelayManager {
             int    cdSec   = cfg.getInt(path + ".countdown-seconds", 30);
             int    gameSec = cfg.getInt(path + ".game-seconds",      120);
             String world   = cfg.getString(path + ".winners-world",  "world");
+            boolean active = cfg.getBoolean(path + ".active",        false);
 
             String mp = path + ".messages";
             String waitAb   = cfg.getString(mp + ".waiting-actionbar");
@@ -115,7 +129,7 @@ public class DynamicDelayManager {
             String winFoot  = cfg.getString(mp + ".winners-footer");
 
             configs.put(key.toLowerCase(), new DynamicConfig(
-                    cdSec, gameSec, world,
+                    cdSec, gameSec, world, active,
                     waitAb, cdAb, gameAb,
                     winHead, winTitle, winLine, winFoot));
         }
@@ -128,6 +142,7 @@ public class DynamicDelayManager {
             cfg.set(path + ".countdown-seconds", dc.countdownSeconds());
             cfg.set(path + ".game-seconds",      dc.gameSeconds());
             cfg.set(path + ".winners-world",     dc.winnersWorld());
+            cfg.set(path + ".active",            dc.active());
 
             String mp = path + ".messages";
             if (dc.waitingActionbar()   != null) cfg.set(mp + ".waiting-actionbar",   dc.waitingActionbar());
@@ -148,14 +163,16 @@ public class DynamicDelayManager {
     // ── Public API ───────────────────────────────────────────────────────────
 
     /**
-     * Activates dynamic-delay mode for the portal.
-     * Preserves any existing message configuration for the portal.
+     * Saves (creates or updates) the dynamic delay config for the portal.
+     * Does NOT start the cycle — call {@link #startDynamic} separately.
+     * Existing message customisations and the active flag are preserved.
      */
-    public void startDynamic(String portalName, int countdownSeconds, int gameSeconds, String winnersWorld) {
+    public void saveConfig(String portalName, int countdownSeconds, int gameSeconds, String winnersWorld) {
         String key = portalName.toLowerCase();
         DynamicConfig existing = configs.get(key);
         configs.put(key, new DynamicConfig(
                 countdownSeconds, gameSeconds, winnersWorld,
+                existing != null && existing.active(),   // preserve active flag
                 existing != null ? existing.waitingActionbar()   : null,
                 existing != null ? existing.countdownActionbar() : null,
                 existing != null ? existing.gameActionbar()      : null,
@@ -164,25 +181,67 @@ public class DynamicDelayManager {
                 existing != null ? existing.winnersLine()        : null,
                 existing != null ? existing.winnersFooter()      : null));
         save();
+    }
+
+    /**
+     * Starts the dynamic cycle for the portal.
+     * Config must already exist (call {@link #saveConfig} first).
+     *
+     * @throws IllegalStateException if no config exists for this portal.
+     */
+    public void startDynamic(String portalName) {
+        String key = portalName.toLowerCase();
+        DynamicConfig dc = configs.get(key);
+        if (dc == null) throw new IllegalStateException("No config for portal: " + portalName);
         plugin.getPortalSchedulerManager().stopCycle(portalName);
+        // Persist active=true
+        configs.put(key, dc.withActive(true));
+        save();
         startWaiting(key);
     }
 
-    /** Returns true if this portal has dynamic-delay mode configured. */
-    public boolean hasDynamic(String portalName) {
-        return configs.containsKey(portalName.toLowerCase());
-    }
-
-    /** Stops and removes dynamic-delay mode for the portal. */
+    /**
+     * Stops the running cycle for the portal but keeps the config.
+     * Safe to call even if the cycle is not running.
+     */
     public void stopDynamic(String portalName) {
         String key = portalName.toLowerCase();
         unfreezeGameWorld(key);
-        configs.remove(key);
         cancelTask(key);
         cancelTask(key + ":monitor");
         cancelTask(key + ":actionbar");
         phases.remove(key);
+        // Persist active=false, keep the rest of the config
+        DynamicConfig dc = configs.get(key);
+        if (dc != null) {
+            configs.put(key, dc.withActive(false));
+            save();
+        }
+    }
+
+    /**
+     * Removes the dynamic delay config entirely and stops the cycle.
+     * After this call {@link #hasDynamic} returns false.
+     */
+    public void removeConfig(String portalName) {
+        String key = portalName.toLowerCase();
+        unfreezeGameWorld(key);
+        cancelTask(key);
+        cancelTask(key + ":monitor");
+        cancelTask(key + ":actionbar");
+        phases.remove(key);
+        configs.remove(key);
         save();
+    }
+
+    /** Returns true if a config exists for this portal (regardless of whether the cycle is running). */
+    public boolean hasDynamic(String portalName) {
+        return configs.containsKey(portalName.toLowerCase());
+    }
+
+    /** Returns true if the cycle is currently running for this portal. */
+    public boolean isActive(String portalName) {
+        return phases.containsKey(portalName.toLowerCase());
     }
 
     /**
@@ -199,10 +258,17 @@ public class DynamicDelayManager {
         return false;
     }
 
-    /** Loads persisted config and restarts all dynamic portals (called on plugin enable). */
+    /** Returns the config for this portal, or null if none. */
+    public DynamicConfig getConfig(String portalName) {
+        return configs.get(portalName.toLowerCase());
+    }
+
+    /** Loads persisted config and restarts all portals that had active=true. */
     public void loadAndRestart() {
         load();
-        configs.keySet().forEach(this::startWaiting);
+        configs.forEach((key, dc) -> {
+            if (dc.active()) startWaiting(key);
+        });
     }
 
     /** Cancels all running tasks (called on plugin disable). */
@@ -230,10 +296,8 @@ public class DynamicDelayManager {
             plugin.getPortalManager().savePortals();
         }
 
-        // Freeze any players already in the game world.
         freezeGameWorld(key);
 
-        // Poll player count every 2 s.
         BukkitTask pollTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
             if (phases.get(key) != Phase.WAITING) return;
             Portal p = plugin.getPortalManager().getPortal(key);
@@ -245,8 +309,8 @@ public class DynamicDelayManager {
         }, POLL_TICKS, POLL_TICKS);
         tasks.put(key, pollTask);
 
-        // Actionbar + re-freeze any new players every second.
-        String template = resolve(configs.get(key) != null ? configs.get(key).waitingActionbar() : null, DEF_WAITING_AB);
+        DynamicConfig dc = configs.get(key);
+        String template = resolve(dc != null ? dc.waitingActionbar() : null, DEF_WAITING_AB);
         String abParsed = ColorUtil.parse(template);
         BukkitTask abTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
             if (phases.get(key) != Phase.WAITING) return;
@@ -255,7 +319,7 @@ public class DynamicDelayManager {
             World destWorld = plugin.getServer().getWorld(p.getDestinationWorld());
             if (destWorld == null) return;
             for (Player player : destWorld.getPlayers()) {
-                plugin.getPlayerFreezeManager().freeze(player); // idempotent
+                plugin.getPlayerFreezeManager().freeze(player);
                 sendActionBar(player, abParsed);
             }
         }, 20L, 20L);
@@ -294,7 +358,7 @@ public class DynamicDelayManager {
 
             String abParsed = ColorUtil.parse(template.replace("{seconds}", String.valueOf(remaining[0])));
             for (Player p : destWorld.getPlayers()) {
-                plugin.getPlayerFreezeManager().freeze(p); // freeze latecomers
+                plugin.getPlayerFreezeManager().freeze(p);
                 sendActionBar(p, abParsed);
             }
             remaining[0]--;
@@ -313,7 +377,6 @@ public class DynamicDelayManager {
         if (portal == null) { startWaiting(key); return; }
         String gameWorldName = portal.getDestinationWorld();
 
-        // Unfreeze all players in the game world.
         unfreezeGameWorld(key);
 
         portal.setEnabled(false);
@@ -333,7 +396,6 @@ public class DynamicDelayManager {
         String template = resolve(dc.gameActionbar(), DEF_GAME_AB);
         int[] timeLeft = { dc.gameSeconds() };
 
-        // Monitor last survivor + send actionbar every second.
         BukkitTask monitorTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
             if (phases.get(key) != Phase.GAME_RUNNING) return;
             World gameWorld = plugin.getServer().getWorld(gameWorldName);
@@ -352,7 +414,6 @@ public class DynamicDelayManager {
         }, 20L, 20L);
         tasks.put(key + ":monitor", monitorTask);
 
-        // Schedule normal game-over after gameSeconds.
         BukkitTask endTask = plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
             if (phases.get(key) == Phase.GAME_RUNNING) {
                 beginEnding(key, gameWorldName, dc.winnersWorld());
@@ -361,7 +422,7 @@ public class DynamicDelayManager {
         tasks.put(key, endTask);
     }
 
-    /** Phase 3: announce winners to all players, teleport them, clean world, re-open portal. */
+    /** Phase 3: announce winners, teleport them, clean world, re-open portal. */
     private void beginEnding(String key, String gameWorldName, String winnersWorldName) {
         if (phases.get(key) == Phase.GAME_ENDING) return;
         phases.put(key, Phase.GAME_ENDING);
@@ -370,26 +431,20 @@ public class DynamicDelayManager {
 
         plugin.getItemRandomizationManager().stopRandomization(gameWorldName);
 
-        // Collect winner names BEFORE teleport.
         World gameWorld = plugin.getServer().getWorld(gameWorldName);
         List<String> winnerNames = new ArrayList<>();
         if (gameWorld != null) {
-            for (Player p : gameWorld.getPlayers()) {
-                winnerNames.add(p.getName());
-            }
+            for (Player p : gameWorld.getPlayers()) winnerNames.add(p.getName());
         }
 
-        // Broadcast winners to ALL online players.
         broadcastWinners(key, winnerNames);
 
-        // Send end message to remaining game-world players.
         String endMsg = plugin.getMinigameConfigManager().getEndMessage(key);
         if (endMsg != null && gameWorld != null) {
             Portal portal = plugin.getPortalManager().getPortal(key);
             String pName  = portal != null ? portal.getName() : key;
             String parsed = ColorUtil.parse(
-                    endMsg.replace("{portal}", pName)
-                          .replace("{world}",  gameWorldName));
+                    endMsg.replace("{portal}", pName).replace("{world}", gameWorldName));
             for (Player p : gameWorld.getPlayers()) p.sendMessage(parsed);
         }
 
@@ -400,12 +455,8 @@ public class DynamicDelayManager {
             if (gWorld != null && wWorld != null) {
                 WorldConfigManager.WorldSpawn spawn =
                         plugin.getWorldConfigManager().getSpawn(winnersWorldName);
-                Location dest = spawn != null
-                        ? spawn.toLocation(wWorld)
-                        : wWorld.getSpawnLocation();
-                for (Player p : new ArrayList<>(gWorld.getPlayers())) {
-                    p.teleportAsync(dest);
-                }
+                Location dest = spawn != null ? spawn.toLocation(wWorld) : wWorld.getSpawnLocation();
+                for (Player p : new ArrayList<>(gWorld.getPlayers())) p.teleportAsync(dest);
             }
 
             if (gWorld != null && plugin.getWorldConfigManager().isCleaningEnabled(gameWorldName)) {
@@ -418,33 +469,28 @@ public class DynamicDelayManager {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    /** Freezes all players currently in the portal's game world. */
     private void freezeGameWorld(String key) {
         Portal portal = plugin.getPortalManager().getPortal(key);
         if (portal == null) return;
         World world = plugin.getServer().getWorld(portal.getDestinationWorld());
         if (world == null) return;
-        PlayerFreezeManager fm = plugin.getPlayerFreezeManager();
-        for (Player p : world.getPlayers()) fm.freeze(p);
+        for (Player p : world.getPlayers()) plugin.getPlayerFreezeManager().freeze(p);
     }
 
-    /** Unfreezes all players currently in the portal's game world. */
     private void unfreezeGameWorld(String key) {
         Portal portal = plugin.getPortalManager().getPortal(key);
         if (portal == null) return;
         World world = plugin.getServer().getWorld(portal.getDestinationWorld());
         if (world == null) return;
-        PlayerFreezeManager fm = plugin.getPlayerFreezeManager();
-        for (Player p : world.getPlayers()) fm.unfreeze(p);
+        for (Player p : world.getPlayers()) plugin.getPlayerFreezeManager().unfreeze(p);
     }
 
-    /** Broadcasts the winner announcement to every online player. */
     private void broadcastWinners(String key, List<String> names) {
         DynamicConfig dc = configs.get(key);
-        String header = ColorUtil.parse(resolve(dc != null ? dc.winnersHeader() : null, DEF_WIN_HEADER));
-        String title  = ColorUtil.parse(resolve(dc != null ? dc.winnersTitle()  : null, DEF_WIN_TITLE));
-        String lineTpl = resolve(dc != null ? dc.winnersLine() : null, DEF_WIN_LINE);
-        String footer = ColorUtil.parse(resolve(dc != null ? dc.winnersFooter() : null, DEF_WIN_FOOTER));
+        String header  = ColorUtil.parse(resolve(dc != null ? dc.winnersHeader() : null, DEF_WIN_HEADER));
+        String title   = ColorUtil.parse(resolve(dc != null ? dc.winnersTitle()  : null, DEF_WIN_TITLE));
+        String lineTpl = resolve(dc != null ? dc.winnersLine()   : null, DEF_WIN_LINE);
+        String footer  = ColorUtil.parse(resolve(dc != null ? dc.winnersFooter() : null, DEF_WIN_FOOTER));
 
         for (Player online : plugin.getServer().getOnlinePlayers()) {
             online.sendMessage(header);
@@ -460,15 +506,12 @@ public class DynamicDelayManager {
         }
     }
 
-    /** Returns {@code configured} if non-null, otherwise {@code defaultVal}. */
     private static String resolve(String configured, String defaultVal) {
         return configured != null ? configured : defaultVal;
     }
 
-    /** Sends an actionbar message (pre-parsed §-string) to a player. */
     private void sendActionBar(Player player, String legacyText) {
-        player.sendActionBar(
-                LegacyComponentSerializer.legacySection().deserialize(legacyText));
+        player.sendActionBar(LegacyComponentSerializer.legacySection().deserialize(legacyText));
     }
 
     private void cancelTask(String key) {
