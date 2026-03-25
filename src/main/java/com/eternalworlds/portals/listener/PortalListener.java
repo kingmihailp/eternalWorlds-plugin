@@ -197,6 +197,8 @@ public class PortalListener implements Listener {
         if (leavableTarget != null) {
             pendingLeavableTp.put(player.getUniqueId(), leavableTarget);
         }
+        // Always clean up freeze state on disconnect.
+        plugin.getPlayerFreezeManager().unfreeze(player);
     }
 
     @EventHandler(priority = EventPriority.NORMAL)
@@ -204,6 +206,15 @@ public class PortalListener implements Listener {
         Player player        = event.getPlayer();
         String fromWorldName = event.getFrom().getName();
         String newWorldName  = player.getWorld().getName();
+
+        // Unfreeze the player when they leave a frozen game world.
+        if (plugin.getDynamicDelayManager().isWorldFreezeActive(fromWorldName)) {
+            plugin.getPlayerFreezeManager().unfreeze(player);
+        }
+        // Freeze the player if they enter a game world that is in WAITING/COUNTDOWN.
+        if (plugin.getDynamicDelayManager().isWorldFreezeActive(newWorldName)) {
+            plugin.getPlayerFreezeManager().freeze(player);
+        }
 
         // If the world the player just left has a "leavable" target configured,
         // send them there — unless they already landed in that target world.

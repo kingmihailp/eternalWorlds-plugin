@@ -5,6 +5,7 @@ import com.eternalworlds.portals.listener.PortalListener;
 import com.eternalworlds.portals.manager.DynamicDelayManager;
 import com.eternalworlds.portals.manager.ItemRandomizationManager;
 import com.eternalworlds.portals.manager.MinigameConfigManager;
+import com.eternalworlds.portals.manager.PlayerFreezeManager;
 import com.eternalworlds.portals.manager.PortalManager;
 import com.eternalworlds.portals.manager.PortalSchedulerManager;
 import com.eternalworlds.portals.manager.RandomPointManager;
@@ -24,6 +25,7 @@ public final class EternalWorldsPlugin extends JavaPlugin {
     private MinigameConfigManager    minigameConfigManager;
     private PortalSchedulerManager   portalSchedulerManager;
     private DynamicDelayManager      dynamicDelayManager;
+    private PlayerFreezeManager      playerFreezeManager;
 
     @Override
     public void onEnable() {
@@ -37,6 +39,7 @@ public final class EternalWorldsPlugin extends JavaPlugin {
         this.randomPointManager        = new RandomPointManager(this);
         this.minigameConfigManager     = new MinigameConfigManager(this);
         this.portalSchedulerManager    = new PortalSchedulerManager(this);
+        this.playerFreezeManager       = new PlayerFreezeManager();
         this.dynamicDelayManager       = new DynamicDelayManager(this);
         portalManager.loadPortals();
         // Restore portal cycles that were active before the last shutdown
@@ -49,6 +52,7 @@ public final class EternalWorldsPlugin extends JavaPlugin {
         cmd.setTabCompleter(executor);
 
         getServer().getPluginManager().registerEvents(new PortalListener(this), this);
+        getServer().getPluginManager().registerEvents(playerFreezeManager, this);
 
         getLogger().info("EternalWorlds Portals v" + getDescription().getVersion() + " enabled.");
     }
@@ -71,4 +75,5 @@ public final class EternalWorldsPlugin extends JavaPlugin {
     public MinigameConfigManager     getMinigameConfigManager()     { return minigameConfigManager; }
     public PortalSchedulerManager    getPortalSchedulerManager()    { return portalSchedulerManager; }
     public DynamicDelayManager       getDynamicDelayManager()       { return dynamicDelayManager; }
+    public PlayerFreezeManager       getPlayerFreezeManager()       { return playerFreezeManager; }
 }
