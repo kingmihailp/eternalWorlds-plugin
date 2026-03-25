@@ -13,6 +13,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
+import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
@@ -246,6 +247,20 @@ public class PortalListener implements Listener {
         if (spawn == null) return;
 
         event.setRespawnLocation(spawn.toLocation(event.getPlayer().getWorld()));
+    }
+
+    // ---- Building height limit ----
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onBlockPlace(BlockPlaceEvent event) {
+        String worldName = event.getBlock().getWorld().getName();
+        Integer maxY = plugin.getWorldConfigManager().getBuildingHeight(worldName);
+        if (maxY == null) return;
+        if (event.getBlock().getY() > maxY) {
+            event.setCancelled(true);
+            event.getPlayer().sendMessage(
+                    "§c[Portals] You cannot place blocks above Y=" + maxY + " in this world.");
+        }
     }
 
     // ---- Nether / End portal blocking ----

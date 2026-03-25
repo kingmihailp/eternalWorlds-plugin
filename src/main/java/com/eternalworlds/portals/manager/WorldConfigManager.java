@@ -75,6 +75,11 @@ public class WorldConfigManager {
      * When false, vanilla end portals and end gateways are blocked in that world.
      */
     private final Map<String, Boolean>           worldEndAllowed      = new HashMap<>();
+    /**
+     * world name (lower-case) -> max Y level at which players may place blocks.
+     * Null means no restriction.
+     */
+    private final Map<String, Integer>           worldBuildingHeight  = new HashMap<>();
 
     public WorldConfigManager(EternalWorldsPlugin plugin) {
         this.plugin = plugin;
@@ -95,6 +100,7 @@ public class WorldConfigManager {
         worldLeavable.clear();
         worldNetherAllowed.clear();
         worldEndAllowed.clear();
+        worldBuildingHeight.clear();
         if (!file.exists()) return;
 
         YamlConfiguration cfg = YamlConfiguration.loadConfiguration(file);
@@ -151,6 +157,10 @@ public class WorldConfigManager {
             String endPath = "worlds." + world + ".end-allowed";
             if (cfg.contains(endPath)) worldEndAllowed.put(key, cfg.getBoolean(endPath));
 
+            // Building height limit
+            String heightPath = "worlds." + world + ".building-height";
+            if (cfg.contains(heightPath)) worldBuildingHeight.put(key, cfg.getInt(heightPath));
+
             // Spawn
             String spawnPath = "worlds." + world + ".spawn";
             if (cfg.isConfigurationSection(spawnPath)) {
@@ -176,6 +186,7 @@ public class WorldConfigManager {
         worlds.addAll(worldLeavable.keySet());
         worlds.addAll(worldNetherAllowed.keySet());
         worlds.addAll(worldEndAllowed.keySet());
+        worlds.addAll(worldBuildingHeight.keySet());
 
         YamlConfiguration cfg = new YamlConfiguration();
         for (String world : worlds) {
@@ -202,6 +213,9 @@ public class WorldConfigManager {
 
             Boolean endAllowed = worldEndAllowed.get(world);
             if (endAllowed != null) cfg.set("worlds." + world + ".end-allowed", endAllowed);
+
+            Integer buildingHeight = worldBuildingHeight.get(world);
+            if (buildingHeight != null) cfg.set("worlds." + world + ".building-height", buildingHeight);
 
             EliminationConfig ec = worldElimination.get(world);
             if (ec != null) {
@@ -367,6 +381,23 @@ public class WorldConfigManager {
 
     public void setEndAllowed(String worldName, boolean allowed) {
         worldEndAllowed.put(worldName.toLowerCase(), allowed);
+        save();
+    }
+
+    // ---- Building height limit ----
+
+    /** Returns the max Y at which players may place blocks, or null if unrestricted. */
+    public Integer getBuildingHeight(String worldName) {
+        return worldBuildingHeight.get(worldName.toLowerCase());
+    }
+
+    public void setBuildingHeight(String worldName, int maxY) {
+        worldBuildingHeight.put(worldName.toLowerCase(), maxY);
+        save();
+    }
+
+    public void removeBuildingHeight(String worldName) {
+        worldBuildingHeight.remove(worldName.toLowerCase());
         save();
     }
 }

@@ -31,7 +31,8 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             "setrandomplayerpoint", "clearrandompoints",
             "setwinnersdest", "setmessage", "setcleaningworld",
             "setworldleavable", "setportaldynamicdelay", "stopdynamicdelay",
-            "allownetherperworld", "allowendperworld"
+            "allownetherperworld", "allowendperworld",
+            "setbuildingheightperworld"
     );
 
     private static final List<String> MESSAGE_TYPES = Arrays.asList("open", "close", "end");
@@ -92,9 +93,10 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             case "setworldleavable"      -> cmdSetWorldLeavable(sender, args);
             case "setportaldynamicdelay" -> cmdSetPortalDynamicDelay(sender, args);
             case "stopdynamicdelay"      -> cmdStopDynamicDelay(sender, args);
-            case "allownetherperworld"   -> cmdAllowNetherPerWorld(sender, args);
-            case "allowendperworld"      -> cmdAllowEndPerWorld(sender, args);
-            default                      -> { sendHelp(sender); yield true; }
+            case "allownetherperworld"      -> cmdAllowNetherPerWorld(sender, args);
+            case "allowendperworld"         -> cmdAllowEndPerWorld(sender, args);
+            case "setbuildingheightperworld"-> cmdSetBuildingHeightPerWorld(sender, args);
+            default                         -> { sendHelp(sender); yield true; }
         };
     }
 
@@ -764,6 +766,35 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
+    // /portal setbuildingheightperworld <worldName> <maxY|remove>
+    private boolean cmdSetBuildingHeightPerWorld(CommandSender sender, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage("§cUsage: /portal setbuildingheightperworld <worldName> <maxY|remove>");
+            return true;
+        }
+        String worldName = args[1];
+        String value     = args[2].toLowerCase();
+
+        if (value.equals("remove")) {
+            plugin.getWorldConfigManager().removeBuildingHeight(worldName);
+            sender.sendMessage("§a[Portals] Building height limit removed for world §e" + worldName + "§a.");
+            return true;
+        }
+
+        int maxY;
+        try {
+            maxY = Integer.parseInt(value);
+        } catch (NumberFormatException e) {
+            sender.sendMessage("§cInvalid value: §e" + value + "§c. Provide an integer Y level or §fremove§c.");
+            return true;
+        }
+
+        plugin.getWorldConfigManager().setBuildingHeight(worldName, maxY);
+        sender.sendMessage("§a[Portals] Building height in world §e" + worldName
+                + " §alimited to §bY=" + maxY + "§a.");
+        return true;
+    }
+
     // /portal reload
     private boolean cmdReload(CommandSender sender) {
         plugin.reloadConfig();
@@ -807,6 +838,7 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("§e/portal stopdynamicdelay <portal> §7– Remove dynamic delay mode from portal");
         sender.sendMessage("§e/portal allownetherperworld <world> <true|false> §7– Allow or block vanilla nether portals in a world");
         sender.sendMessage("§e/portal allowendperworld <world> <true|false> §7– Allow or block vanilla end portals/gateways in a world");
+        sender.sendMessage("§e/portal setbuildingheightperworld <world> <maxY|remove> §7– Limit block placement above Y in a world (remove to clear)");
         sender.sendMessage("§e/portal reload §7– Reload config and portals");
     }
 
@@ -847,7 +879,8 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
                 }
                 case "travel", "worldgamemode", "worldpvp", "worldclearinv",
                         "worlditemrandomization", "seteliminationylevel", "setcleaningworld",
-                        "allownetherperworld", "allowendperworld" -> {
+                        "allownetherperworld", "allowendperworld",
+                        "setbuildingheightperworld" -> {
                     List<String> allWorlds = new ArrayList<>(plugin.getWorldManager().listLoadedWorlds());
                     allWorlds.addAll(plugin.getWorldManager().listUnloadedWorlds());
                     StringUtil.copyPartialMatches(args[1], allWorlds, completions);
@@ -883,6 +916,8 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             StringUtil.copyPartialMatches(args[2], BOOL_VALUES, completions);
         } else if (args.length == 3 && args[0].equalsIgnoreCase("allowendperworld")) {
             StringUtil.copyPartialMatches(args[2], BOOL_VALUES, completions);
+        } else if (args.length == 3 && args[0].equalsIgnoreCase("setbuildingheightperworld")) {
+            StringUtil.copyPartialMatches(args[2], List.of("remove"), completions);
         } else if (args.length == 3 && args[0].equalsIgnoreCase("worlditemrandomization")) {
             StringUtil.copyPartialMatches(args[2], PVP_VALUES, completions);
         } else if (args.length == 4 && args[0].equalsIgnoreCase("seteliminationylevel")) {
