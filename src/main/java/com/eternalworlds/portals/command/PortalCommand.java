@@ -187,6 +187,12 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         p.setEnabled(enabled);
         plugin.getPortalManager().savePortals();
         sender.sendMessage("§a[Portals] Portal §e" + p.getName() + (enabled ? " §aenabled." : " §cdisabled."));
+        // If disabling a portal that has a dynamic delay cycle, stop the cycle too —
+        // otherwise the cycle will re-enable the portal on the next phase transition.
+        if (!enabled && plugin.getDynamicDelayManager().hasDynamic(p.getName())) {
+            plugin.getDynamicDelayManager().stopDynamic(p.getName());
+            sender.sendMessage("§7[Portals] Dynamic delay for §e" + p.getName() + " §7was also stopped. Use /portal setportaldynamicdelay to restart it.");
+        }
         return true;
     }
 
