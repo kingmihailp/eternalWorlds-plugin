@@ -5,6 +5,7 @@ import com.eternalworlds.portals.manager.SelectionManager;
 import com.eternalworlds.portals.manager.WorldConfigManager;
 import com.eternalworlds.portals.model.Portal;
 import org.bukkit.GameMode;
+import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
@@ -123,7 +124,11 @@ public class PortalListener implements Listener {
 
         Portal portal = plugin.getPortalManager().getPortalAt(
                 to.getWorld().getName(), to.getBlockX(), to.getBlockY(), to.getBlockZ());
-        if (portal == null) return;
+        if (portal == null) {
+            // No enabled portal here — check if a disabled portal allows spectator re-entry.
+            trySpectatorEntry(player, to);
+            return;
+        }
 
         // Cooldown check
         int  cooldownSec = plugin.getConfig().getInt("portal-cooldown", 3);
@@ -321,6 +326,41 @@ public class PortalListener implements Listener {
     }
 
     // ---- Internal helpers ----
+
+    /**
+     * Handles spectator re-entry: if the player steps into a disabled portal that
+     * has an active GAME_RUNNING dynamic-delay cycle and the player was an original
+     * participant of that game, they are teleported to the game world as a spectator.
+     */
+    private void trySpectatorEntry(Player player, Location to) {
+        Portal portal = plugin.getPortalManager().getDisabledPortalAt(
+                to.getWorld().getName(), to.getBlockX(), to.getBlockY(), to.getBlockZ());
+        if (portal == null) return;
+
+        String portalName = portal.getName();
+        if (!plugin.getDynamicDelayManager().isPhaseGameRunning(portalName)) return;
+        if (!plugin.getDynamicDelayManager().isOriginalParticipant(portalName, player.getUniqueId())) return;
+
+        // Respect the same cooldown as regular portal use.
+        int  cooldownSec = plugin.getConfig().getInt("portal-cooldown", 3);
+        long now         = System.currentTimeMillis();
+        Long lastUsed    = portalCooldowns.get(player.getUniqueId());
+        if (lastUsed != null && now - lastUsed < cooldownSec * 1000L) return;
+        portalCooldowns.put(player.getUniqueId(), now);
+
+        // Use the portal's fixed destination (not random spawn points).
+        World destWorld = plugin.getWorldManager().loadWorld(portal.getDestinationWorld());
+        if (destWorld == null) return;
+        Location dest = new Location(destWorld,
+                portal.getDestX(), portal.getDestY(), portal.getDestZ(),
+                portal.getDestYaw(), portal.getDestPitch());
+
+        player.teleportAsync(dest).thenAccept(success -> {
+            if (!success) return;
+            player.setGameMode(GameMode.SPECTATOR);
+            player.sendMessage("§7[Portals] You rejoined §e" + portalName + " §7as a §fspectator§7.");
+        });
+    }
 
     private void applyWorldSettings(Player player, String worldName) {
         GameMode gm = plugin.getWorldConfigManager().getGameMode(worldName);

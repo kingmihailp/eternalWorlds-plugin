@@ -63,6 +63,17 @@ public class PortalManager {
         return null;
     }
 
+    /**
+     * Returns the first DISABLED portal whose bounding box contains (world, x, y, z),
+     * or null if none found.  Used for spectator re-entry during dynamic-delay games.
+     */
+    public Portal getDisabledPortalAt(String world, int x, int y, int z) {
+        for (Portal p : portals.values()) {
+            if (!p.isEnabled() && p.contains(world, x, y, z)) return p;
+        }
+        return null;
+    }
+
     // ---- Persistence ----
 
     public void loadPortals() {

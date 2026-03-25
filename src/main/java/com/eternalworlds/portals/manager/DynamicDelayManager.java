@@ -4,6 +4,7 @@ import com.eternalworlds.portals.EternalWorldsPlugin;
 import com.eternalworlds.portals.model.Portal;
 import com.eternalworlds.portals.util.ColorUtil;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
+import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -14,8 +15,11 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 
 /**
  * Manages "dynamic delay" portal configs and their lifecycle cycles.
@@ -99,6 +103,12 @@ public class DynamicDelayManager {
     private final Map<String, BukkitTask>    tasks   = new HashMap<>();
     /** portalName (lower-case) → current lifecycle phase (only present when cycle is running) */
     private final Map<String, Phase>         phases  = new HashMap<>();
+    /**
+     * portalName (lower-case) → UUIDs of players that were in the game world
+     * at the moment the game started.  Used to identify spectator re-entrants.
+     * Cleared when the game ends or the cycle is stopped.
+     */
+    private final Map<String, Set<UUID>>     gameParticipants = new HashMap<>();
 
     public DynamicDelayManager(EternalWorldsPlugin plugin) {
         this.plugin   = plugin;
@@ -211,6 +221,7 @@ public class DynamicDelayManager {
         cancelTask(key + ":monitor");
         cancelTask(key + ":actionbar");
         phases.remove(key);
+        gameParticipants.remove(key);
         // Persist active=false, keep the rest of the config
         DynamicConfig dc = configs.get(key);
         if (dc != null) {
@@ -230,6 +241,7 @@ public class DynamicDelayManager {
         cancelTask(key + ":monitor");
         cancelTask(key + ":actionbar");
         phases.remove(key);
+        gameParticipants.remove(key);
         configs.remove(key);
         save();
     }
@@ -263,6 +275,20 @@ public class DynamicDelayManager {
         return configs.get(portalName.toLowerCase());
     }
 
+    /** Returns true if the portal's cycle is currently in the GAME_RUNNING phase. */
+    public boolean isPhaseGameRunning(String portalName) {
+        return phases.get(portalName.toLowerCase()) == Phase.GAME_RUNNING;
+    }
+
+    /**
+     * Returns true if the given player UUID was recorded as a game participant
+     * when the current (or most recent) game started.
+     */
+    public boolean isOriginalParticipant(String portalName, UUID uuid) {
+        Set<UUID> set = gameParticipants.get(portalName.toLowerCase());
+        return set != null && set.contains(uuid);
+    }
+
     /** Loads persisted config and restarts all portals that had active=true. */
     public void loadAndRestart() {
         load();
@@ -279,6 +305,7 @@ public class DynamicDelayManager {
             if (t != null) t.cancel();
         });
         phases.clear();
+        gameParticipants.clear();
     }
 
     // ── Lifecycle ────────────────────────────────────────────────────────────
@@ -379,6 +406,14 @@ public class DynamicDelayManager {
 
         unfreezeGameWorld(key);
 
+        // Record every current player in the game world as an original participant.
+        World gameWorldSnap = plugin.getServer().getWorld(gameWorldName);
+        Set<UUID> participants = new HashSet<>();
+        if (gameWorldSnap != null) {
+            for (Player p : gameWorldSnap.getPlayers()) participants.add(p.getUniqueId());
+        }
+        gameParticipants.put(key, participants);
+
         portal.setEnabled(false);
         plugin.getPortalManager().savePortals();
 
@@ -401,7 +436,10 @@ public class DynamicDelayManager {
             World gameWorld = plugin.getServer().getWorld(gameWorldName);
             if (gameWorld == null) return;
 
-            if (gameWorld.getPlayers().size() <= 1) {
+            long activePlayers = gameWorld.getPlayers().stream()
+                    .filter(p -> p.getGameMode() != GameMode.SPECTATOR)
+                    .count();
+            if (activePlayers <= 1) {
                 beginEnding(key, gameWorldName, dc.winnersWorld());
                 return;
             }
@@ -434,10 +472,14 @@ public class DynamicDelayManager {
         World gameWorld = plugin.getServer().getWorld(gameWorldName);
         List<String> winnerNames = new ArrayList<>();
         if (gameWorld != null) {
-            for (Player p : gameWorld.getPlayers()) winnerNames.add(p.getName());
+            for (Player p : gameWorld.getPlayers()) {
+                // Spectators re-entered to observe — they are not winners
+                if (p.getGameMode() != GameMode.SPECTATOR) winnerNames.add(p.getName());
+            }
         }
 
         broadcastWinners(key, winnerNames);
+        gameParticipants.remove(key);
 
         String endMsg = plugin.getMinigameConfigManager().getEndMessage(key);
         if (endMsg != null && gameWorld != null) {
@@ -456,7 +498,17 @@ public class DynamicDelayManager {
                 WorldConfigManager.WorldSpawn spawn =
                         plugin.getWorldConfigManager().getSpawn(winnersWorldName);
                 Location dest = spawn != null ? spawn.toLocation(wWorld) : wWorld.getSpawnLocation();
-                for (Player p : new ArrayList<>(gWorld.getPlayers())) p.teleportAsync(dest);
+                GameMode winnersGm = plugin.getWorldConfigManager().getGameMode(winnersWorldName);
+                for (Player p : new ArrayList<>(gWorld.getPlayers())) {
+                    boolean wasSpectator = p.getGameMode() == GameMode.SPECTATOR;
+                    p.teleportAsync(dest).thenAccept(ok -> {
+                        if (!ok) return;
+                        // Restore spectators to the winners-world game mode (or SURVIVAL).
+                        if (wasSpectator) {
+                            p.setGameMode(winnersGm != null ? winnersGm : GameMode.SURVIVAL);
+                        }
+                    });
+                }
             }
 
             if (gWorld != null && plugin.getWorldConfigManager().isCleaningEnabled(gameWorldName)) {
