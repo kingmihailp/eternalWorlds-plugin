@@ -33,7 +33,8 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             "setworldleavable", "setportaldynamicdelay", "startdynamicdelay",
             "stopdynamicdelay", "removedynamicdelay",
             "allownetherperworld", "allowendperworld",
-            "setbuildingheightperworld", "allowbedsleeping"
+            "setbuildingheightperworld", "allowbedsleeping",
+            "setcleaningminy"
     );
 
     private static final List<String> MESSAGE_TYPES = Arrays.asList("open", "close", "end");
@@ -100,6 +101,7 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             case "allowendperworld"         -> cmdAllowEndPerWorld(sender, args);
             case "setbuildingheightperworld"-> cmdSetBuildingHeightPerWorld(sender, args);
             case "allowbedsleeping"         -> cmdAllowBedSleeping(sender, args);
+            case "setcleaningminy"          -> cmdSetCleaningMinY(sender, args);
             default                         -> { sendHelp(sender); yield true; }
         };
     }
@@ -661,6 +663,32 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
+    // /portal setcleaningminy <worldName> <y|reset>
+    private boolean cmdSetCleaningMinY(CommandSender sender, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage("§cUsage: /portal setcleaningminy <worldName> <y|reset>");
+            sender.sendMessage("§7Sets the minimum Y from which block cleaning starts.");
+            sender.sendMessage("§7Blocks below this Y are never removed. Use §freset §7for the default (world bottom + 5).");
+            return true;
+        }
+        String worldName = args[1];
+        String value     = args[2];
+        if (value.equalsIgnoreCase("reset")) {
+            plugin.getWorldConfigManager().removeCleanMinY(worldName);
+            sender.sendMessage("§a[Portals] Clean min-Y for world §e" + worldName + " §areset to default.");
+            return true;
+        }
+        try {
+            int y = Integer.parseInt(value);
+            plugin.getWorldConfigManager().setCleanMinY(worldName, y);
+            sender.sendMessage("§a[Portals] Clean min-Y for world §e" + worldName + " §eset to §c" + y
+                    + "§a. Blocks below Y=" + y + " will never be removed.");
+        } catch (NumberFormatException e) {
+            sender.sendMessage("§cInvalid number: §f" + value + "§c. Use an integer or §freset§c.");
+        }
+        return true;
+    }
+
     // /portal setworldleavable <sourceWorld> <targetWorld>
     private boolean cmdSetWorldLeavable(CommandSender sender, String[] args) {
         if (args.length < 3) {
@@ -900,6 +928,7 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("§e/portal setwinnersdest <portal> <world> §7– Set world where players are sent after the game ends");
         sender.sendMessage("§e/portal setmessage <portal> <open|close|end> <msg> §7– Set a portal message (hex: &#RRGGBB, {portal}, {world})");
         sender.sendMessage("§e/portal setcleaningworld <world> <true|false> §7– Clean a world (entities+blocks, r=800) when game ends");
+        sender.sendMessage("§e/portal setcleaningminy <world> <y|reset> §7– Set minimum Y for cleaning (blocks below this Y are never removed)");
         sender.sendMessage("§e/portal setworldleavable <sourceWorld> <targetWorld> §7– Teleport players to targetWorld whenever they leave sourceWorld");
         sender.sendMessage("§e/portal setportaldynamicdelay <portal> <cdSec> <gameSec> <winnersWorld> §7– Save dynamic delay config (does not start cycle)");
         sender.sendMessage("§e/portal startdynamicdelay <portal> §7– Start the dynamic delay cycle (config must exist)");
@@ -950,7 +979,8 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
                 case "travel", "worldgamemode", "worldpvp", "worldclearinv",
                         "worlditemrandomization", "seteliminationylevel", "setcleaningworld",
                         "allownetherperworld", "allowendperworld",
-                        "setbuildingheightperworld", "allowbedsleeping" -> {
+                        "setbuildingheightperworld", "allowbedsleeping",
+                        "setcleaningminy" -> {
                     List<String> allWorlds = new ArrayList<>(plugin.getWorldManager().listLoadedWorlds());
                     allWorlds.addAll(plugin.getWorldManager().listUnloadedWorlds());
                     StringUtil.copyPartialMatches(args[1], allWorlds, completions);
@@ -1008,6 +1038,8 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             StringUtil.copyPartialMatches(args[2], BOOL_VALUES, completions);
         } else if (args.length == 3 && args[0].equalsIgnoreCase("setbuildingheightperworld")) {
             StringUtil.copyPartialMatches(args[2], List.of("remove"), completions);
+        } else if (args.length == 3 && args[0].equalsIgnoreCase("setcleaningminy")) {
+            StringUtil.copyPartialMatches(args[2], List.of("reset"), completions);
         } else if (args.length == 3 && args[0].equalsIgnoreCase("worlditemrandomization")) {
             StringUtil.copyPartialMatches(args[2], PVP_VALUES, completions);
         } else if (args.length == 4 && args[0].equalsIgnoreCase("seteliminationylevel")) {

@@ -85,6 +85,11 @@ public class WorldConfigManager {
      * When false, players cannot sleep in a bed (spawn point is not set).
      */
     private final Map<String, Boolean>           worldBedSleeping     = new HashMap<>();
+    /**
+     * world name (lower-case) -> minimum Y from which block cleaning starts.
+     * Blocks BELOW this Y are never removed. Null = use default (world minHeight + 5).
+     */
+    private final Map<String, Integer>           worldCleanMinY       = new HashMap<>();
 
     public WorldConfigManager(EternalWorldsPlugin plugin) {
         this.plugin = plugin;
@@ -107,6 +112,7 @@ public class WorldConfigManager {
         worldEndAllowed.clear();
         worldBuildingHeight.clear();
         worldBedSleeping.clear();
+        worldCleanMinY.clear();
         if (!file.exists()) return;
 
         YamlConfiguration cfg = YamlConfiguration.loadConfiguration(file);
@@ -171,6 +177,10 @@ public class WorldConfigManager {
             String bedPath = "worlds." + world + ".bed-sleeping";
             if (cfg.contains(bedPath)) worldBedSleeping.put(key, cfg.getBoolean(bedPath));
 
+            // Clean min Y
+            String cleanMinYPath = "worlds." + world + ".clean-min-y";
+            if (cfg.contains(cleanMinYPath)) worldCleanMinY.put(key, cfg.getInt(cleanMinYPath));
+
             // Spawn
             String spawnPath = "worlds." + world + ".spawn";
             if (cfg.isConfigurationSection(spawnPath)) {
@@ -198,6 +208,7 @@ public class WorldConfigManager {
         worlds.addAll(worldEndAllowed.keySet());
         worlds.addAll(worldBuildingHeight.keySet());
         worlds.addAll(worldBedSleeping.keySet());
+        worlds.addAll(worldCleanMinY.keySet());
 
         YamlConfiguration cfg = new YamlConfiguration();
         for (String world : worlds) {
@@ -230,6 +241,9 @@ public class WorldConfigManager {
 
             Boolean bedSleeping = worldBedSleeping.get(world);
             if (bedSleeping != null) cfg.set("worlds." + world + ".bed-sleeping", bedSleeping);
+
+            Integer cleanMinY = worldCleanMinY.get(world);
+            if (cleanMinY != null) cfg.set("worlds." + world + ".clean-min-y", cleanMinY);
 
             EliminationConfig ec = worldElimination.get(world);
             if (ec != null) {
@@ -335,6 +349,21 @@ public class WorldConfigManager {
 
     public void setCleaningEnabled(String worldName, boolean enabled) {
         worldCleaning.put(worldName.toLowerCase(), enabled);
+        save();
+    }
+
+    /** Returns the minimum Y from which block cleaning starts, or null if not configured. */
+    public Integer getCleanMinY(String worldName) {
+        return worldCleanMinY.get(worldName.toLowerCase());
+    }
+
+    public void setCleanMinY(String worldName, int y) {
+        worldCleanMinY.put(worldName.toLowerCase(), y);
+        save();
+    }
+
+    public void removeCleanMinY(String worldName) {
+        worldCleanMinY.remove(worldName.toLowerCase());
         save();
     }
 

@@ -291,9 +291,9 @@ public class PortalSchedulerManager {
         World world = chunk.getWorld();
         int minY    = world.getMinHeight();
         int maxY    = world.getMaxHeight();
-        // Skip the lowest 5 Y-levels — natural bedrock zone in all world types.
-        // This prevents accidental bedrock removal if block-state data is stale.
-        int startY  = minY + 5;
+        // Start cleaning above the configured minY (default: minY+5 — bedrock zone).
+        Integer configMinY = plugin.getWorldConfigManager().getCleanMinY(world.getName());
+        int startY = (configMinY != null) ? configMinY : minY + 5;
 
         for (int x = 0; x < 16; x++) {
             for (int z = 0; z < 16; z++) {
