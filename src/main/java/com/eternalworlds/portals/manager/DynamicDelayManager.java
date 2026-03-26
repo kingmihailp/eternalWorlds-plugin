@@ -14,6 +14,7 @@ import org.bukkit.scoreboard.Criteria;
 import org.bukkit.scoreboard.DisplaySlot;
 import org.bukkit.scoreboard.Objective;
 import org.bukkit.scoreboard.Scoreboard;
+import org.bukkit.scoreboard.Team;
 
 import java.io.File;
 import java.io.IOException;
@@ -61,6 +62,11 @@ public class DynamicDelayManager {
     private static final String DEF_WIN_TITLE    = "&e&lПобедители раунда:";
     private static final String DEF_WIN_LINE     = "  &a{player}";
     private static final String DEF_WIN_FOOTER   = "&6&l━━━━━━━━━━━━━━━━━━━━━━";
+    private static final String       DEF_SCOREBOARD_TITLE = "&6&lЕтернал Ворлдс";
+    private static final List<String> DEF_SCOREBOARD_LINES = List.of(
+            "&8───────────────",
+            "&eИгроков: &c{players}"
+    );
 
     // ── Data structures ───────────────────────────────────────────────────────
 
@@ -81,13 +87,17 @@ public class DynamicDelayManager {
             String winnersHeader,
             String winnersTitle,
             String winnersLine,
-            String winnersFooter
+            String winnersFooter,
+            // Sidebar scoreboard — nullable → use DEF_SCOREBOARD_*
+            String       scoreboardTitle,
+            List<String> scoreboardLines
     ) {
         /** Returns a copy with the given active flag. */
         DynamicConfig withActive(boolean active) {
             return new DynamicConfig(countdownSeconds, gameSeconds, winnersWorld, active,
                     waitingActionbar, countdownActionbar, gameActionbar,
-                    winnersHeader, winnersTitle, winnersLine, winnersFooter);
+                    winnersHeader, winnersTitle, winnersLine, winnersFooter,
+                    scoreboardTitle, scoreboardLines);
         }
     }
 
@@ -144,10 +154,14 @@ public class DynamicDelayManager {
             String winLine  = cfg.getString(mp + ".winners-line");
             String winFoot  = cfg.getString(mp + ".winners-footer");
 
+            String       sbTitle = cfg.getString(path + ".scoreboard.title");
+            List<String> sbLines = cfg.getStringList(path + ".scoreboard.lines");
+
             configs.put(key.toLowerCase(), new DynamicConfig(
                     cdSec, gameSec, world, active,
                     waitAb, cdAb, gameAb,
-                    winHead, winTitle, winLine, winFoot));
+                    winHead, winTitle, winLine, winFoot,
+                    sbTitle, sbLines.isEmpty() ? null : sbLines));
         }
     }
 
@@ -168,6 +182,10 @@ public class DynamicDelayManager {
             if (dc.winnersTitle()       != null) cfg.set(mp + ".winners-title",       dc.winnersTitle());
             if (dc.winnersLine()        != null) cfg.set(mp + ".winners-line",        dc.winnersLine());
             if (dc.winnersFooter()      != null) cfg.set(mp + ".winners-footer",      dc.winnersFooter());
+
+            String sp = path + ".scoreboard";
+            if (dc.scoreboardTitle() != null) cfg.set(sp + ".title", dc.scoreboardTitle());
+            if (dc.scoreboardLines() != null) cfg.set(sp + ".lines", dc.scoreboardLines());
         });
         try {
             cfg.save(dataFile);
@@ -195,7 +213,9 @@ public class DynamicDelayManager {
                 existing != null ? existing.winnersHeader()      : null,
                 existing != null ? existing.winnersTitle()       : null,
                 existing != null ? existing.winnersLine()        : null,
-                existing != null ? existing.winnersFooter()      : null));
+                existing != null ? existing.winnersFooter()      : null,
+                existing != null ? existing.scoreboardTitle()    : null,
+                existing != null ? existing.scoreboardLines()    : null));
         save();
     }
 
@@ -582,16 +602,37 @@ public class DynamicDelayManager {
         player.sendActionBar(LegacyComponentSerializer.legacySection().deserialize(legacyText));
     }
 
+    /**
+     * Creates the sidebar scoreboard for a running game.
+     * Each configured line gets its own Team so its text can be updated dynamically.
+     * Lines are displayed top-to-bottom in the order they appear in the config.
+     * Supports {players} placeholder in both the title and any line.
+     */
     private void createGameScoreboard(String key, String gameWorldName) {
+        DynamicConfig dc = configs.get(key);
+        String titleTpl = resolve(dc != null ? dc.scoreboardTitle() : null, DEF_SCOREBOARD_TITLE);
+        List<String> lines = (dc != null && dc.scoreboardLines() != null)
+                ? dc.scoreboardLines() : DEF_SCOREBOARD_LINES;
+
         Scoreboard board = plugin.getServer().getScoreboardManager().getNewScoreboard();
         Objective obj = board.registerNewObjective("ewgame", Criteria.DUMMY,
                 LegacyComponentSerializer.legacySection().deserialize(
-                        ColorUtil.parse("&eИгроков: &c?")));
+                        ColorUtil.parse(titleTpl.replace("{players}", "?"))));
         obj.setDisplaySlot(DisplaySlot.SIDEBAR);
-        // Static decoration line (separator)
-        obj.getScore(ColorUtil.parse("&8───────────────")).setScore(1);
+
+        // Each line uses a unique invisible entry string ("§0", "§1", … "§f")
+        // and a Team whose prefix holds the actual display text.
+        for (int i = 0; i < Math.min(lines.size(), 16); i++) {
+            String entry = "§" + Integer.toHexString(i);
+            Team team = board.registerNewTeam("ewline" + i);
+            team.addEntry(entry);
+            team.prefix(LegacyComponentSerializer.legacySection().deserialize(
+                    ColorUtil.parse(lines.get(i).replace("{players}", "?"))));
+            // Higher score → displayed higher; first line gets the highest score
+            obj.getScore(entry).setScore(lines.size() - i);
+        }
+
         gameScoreboards.put(key, board);
-        // Assign to all players currently in the game world
         World world = plugin.getServer().getWorld(gameWorldName);
         if (world != null) {
             for (Player p : world.getPlayers()) p.setScoreboard(board);
@@ -603,9 +644,24 @@ public class DynamicDelayManager {
         if (board == null) return;
         Objective obj = board.getObjective("ewgame");
         if (obj == null) return;
+
+        DynamicConfig dc = configs.get(key);
+        String titleTpl = resolve(dc != null ? dc.scoreboardTitle() : null, DEF_SCOREBOARD_TITLE);
+        List<String> lines = (dc != null && dc.scoreboardLines() != null)
+                ? dc.scoreboardLines() : DEF_SCOREBOARD_LINES;
+
+        String count = String.valueOf(activePlayers);
         obj.displayName(LegacyComponentSerializer.legacySection().deserialize(
-                ColorUtil.parse("&eИгроков: &c" + activePlayers)));
-        // Give the board to any new players (e.g. spectators who just re-entered)
+                ColorUtil.parse(titleTpl.replace("{players}", count))));
+
+        for (int i = 0; i < Math.min(lines.size(), 16); i++) {
+            Team team = board.getTeam("ewline" + i);
+            if (team == null) continue;
+            team.prefix(LegacyComponentSerializer.legacySection().deserialize(
+                    ColorUtil.parse(lines.get(i).replace("{players}", count))));
+        }
+
+        // Assign board to any players who don't have it yet (e.g. spectators)
         World world = plugin.getServer().getWorld(gameWorldName);
         if (world != null) {
             for (Player p : world.getPlayers()) {
