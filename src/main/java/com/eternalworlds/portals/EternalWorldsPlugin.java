@@ -1,7 +1,9 @@
 package com.eternalworlds.portals;
 
 import com.eternalworlds.portals.command.PortalCommand;
+import com.eternalworlds.portals.command.StatsCommand;
 import com.eternalworlds.portals.listener.PortalListener;
+import com.eternalworlds.portals.listener.StatisticsListener;
 import com.eternalworlds.portals.manager.DynamicDelayManager;
 import com.eternalworlds.portals.manager.ItemRandomizationManager;
 import com.eternalworlds.portals.manager.MinigameConfigManager;
@@ -10,6 +12,7 @@ import com.eternalworlds.portals.manager.PortalManager;
 import com.eternalworlds.portals.manager.PortalSchedulerManager;
 import com.eternalworlds.portals.manager.RandomPointManager;
 import com.eternalworlds.portals.manager.SelectionManager;
+import com.eternalworlds.portals.manager.StatisticsManager;
 import com.eternalworlds.portals.manager.WorldConfigManager;
 import com.eternalworlds.portals.manager.WorldManager;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -26,6 +29,7 @@ public final class EternalWorldsPlugin extends JavaPlugin {
     private PortalSchedulerManager   portalSchedulerManager;
     private DynamicDelayManager      dynamicDelayManager;
     private PlayerFreezeManager      playerFreezeManager;
+    private StatisticsManager        statisticsManager;
 
     @Override
     public void onEnable() {
@@ -41,6 +45,8 @@ public final class EternalWorldsPlugin extends JavaPlugin {
         this.portalSchedulerManager    = new PortalSchedulerManager(this);
         this.playerFreezeManager       = new PlayerFreezeManager();
         this.dynamicDelayManager       = new DynamicDelayManager(this);
+        this.statisticsManager         = new StatisticsManager(this);
+        statisticsManager.load();
         portalManager.loadPortals();
         // Restore portal cycles that were active before the last shutdown
         portalSchedulerManager.loadAndRestartCycles();
@@ -53,6 +59,16 @@ public final class EternalWorldsPlugin extends JavaPlugin {
 
         getServer().getPluginManager().registerEvents(new PortalListener(this), this);
         getServer().getPluginManager().registerEvents(playerFreezeManager, this);
+        getServer().getPluginManager().registerEvents(new StatisticsListener(this), this);
+
+        StatsCommand statsExecutor = new StatsCommand(this);
+        var statsCmd = getCommand("stats");
+        statsCmd.setExecutor(statsExecutor);
+        statsCmd.setTabCompleter(statsExecutor);
+
+        // Flush dirty statistics data every 5 minutes
+        getServer().getScheduler().runTaskTimerAsynchronously(this,
+                () -> statisticsManager.flushIfDirty(), 6000L, 6000L);
 
         getLogger().info("EternalWorlds Portals v" + getDescription().getVersion() + " enabled.");
     }
@@ -62,6 +78,7 @@ public final class EternalWorldsPlugin extends JavaPlugin {
         if (dynamicDelayManager != null) dynamicDelayManager.cancelAll();
         portalSchedulerManager.cancelAll();
         itemRandomizationManager.cancelAll();
+        if (statisticsManager != null) statisticsManager.flushIfDirty();
         if (portalManager != null) portalManager.savePortals();
         getLogger().info("EternalWorlds Portals disabled.");
     }
@@ -76,4 +93,5 @@ public final class EternalWorldsPlugin extends JavaPlugin {
     public PortalSchedulerManager    getPortalSchedulerManager()    { return portalSchedulerManager; }
     public DynamicDelayManager       getDynamicDelayManager()       { return dynamicDelayManager; }
     public PlayerFreezeManager       getPlayerFreezeManager()       { return playerFreezeManager; }
+    public StatisticsManager         getStatisticsManager()         { return statisticsManager; }
 }

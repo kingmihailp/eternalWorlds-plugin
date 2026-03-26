@@ -581,7 +581,10 @@ public class DynamicDelayManager {
         if (gameWorld != null) {
             for (Player p : gameWorld.getPlayers()) {
                 // Spectators re-entered to observe — they are not winners
-                if (p.getGameMode() != GameMode.SPECTATOR) winnerNames.add(p.getName());
+                if (p.getGameMode() != GameMode.SPECTATOR) {
+                    winnerNames.add(p.getName());
+                    plugin.getStatisticsManager().recordWin(gameWorldName, p.getUniqueId());
+                }
             }
         }
 

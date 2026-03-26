@@ -34,7 +34,12 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             "stopdynamicdelay", "removedynamicdelay",
             "allownetherperworld", "allowendperworld",
             "setbuildingheightperworld", "allowbedsleeping",
-            "setcleaningminy"
+            "setcleaningminy",
+            "createstatisticcounter", "removestatisticcounter", "setstatistictracking"
+    );
+
+    private static final List<String> STAT_METRICS = Arrays.asList(
+            "kills", "deaths", "wins", "blocks-placed", "damage-dealt"
     );
 
     private static final List<String> MESSAGE_TYPES = Arrays.asList("open", "close", "end");
@@ -102,6 +107,9 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             case "setbuildingheightperworld"-> cmdSetBuildingHeightPerWorld(sender, args);
             case "allowbedsleeping"         -> cmdAllowBedSleeping(sender, args);
             case "setcleaningminy"          -> cmdSetCleaningMinY(sender, args);
+            case "createstatisticcounter"   -> cmdCreateStatisticCounter(sender, args);
+            case "removestatisticcounter"   -> cmdRemoveStatisticCounter(sender, args);
+            case "setstatistictracking"     -> cmdSetStatisticTracking(sender, args);
             default                         -> { sendHelp(sender); yield true; }
         };
     }
@@ -900,6 +908,66 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
+    // /portal createstatisticcounter <name> <world>
+    private boolean cmdCreateStatisticCounter(CommandSender sender, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage("§cUsage: /portal createstatisticcounter <name> <world>");
+            return true;
+        }
+        String name  = args[1];
+        String world = args[2];
+        if (plugin.getStatisticsManager().getCounter(name) != null) {
+            sender.sendMessage("§cA statistics counter named §e" + name + " §calready exists.");
+            return true;
+        }
+        plugin.getStatisticsManager().createCounter(name, world);
+        sender.sendMessage("§a[Portals] Statistics counter §e" + name
+                + " §acreated for world §b" + world + "§a.");
+        sender.sendMessage("§7Use §f/portal setstatistictracking " + name + " <metric> <true|false> §7to toggle tracking.");
+        return true;
+    }
+
+    // /portal removestatisticcounter <name>
+    private boolean cmdRemoveStatisticCounter(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            sender.sendMessage("§cUsage: /portal removestatisticcounter <name>");
+            return true;
+        }
+        if (plugin.getStatisticsManager().removeCounter(args[1])) {
+            sender.sendMessage("§a[Portals] Statistics counter §e" + args[1] + " §aremoved.");
+        } else {
+            sender.sendMessage("§cStatistics counter §e" + args[1] + " §cnot found.");
+        }
+        return true;
+    }
+
+    // /portal setstatistictracking <counter> <metric> <true|false>
+    private boolean cmdSetStatisticTracking(CommandSender sender, String[] args) {
+        if (args.length < 4) {
+            sender.sendMessage("§cUsage: /portal setstatistictracking <counter> <kills|deaths|wins|blocks-placed|damage-dealt> <true|false>");
+            return true;
+        }
+        String counterName = args[1];
+        String metric      = args[2].toLowerCase();
+        String valueStr    = args[3].toLowerCase();
+        if (!valueStr.equals("true") && !valueStr.equals("false")) {
+            sender.sendMessage("§cInvalid value: §e" + valueStr + "§c. Use §ftrue §cor §ffalse§c.");
+            return true;
+        }
+        if (!STAT_METRICS.contains(metric)) {
+            sender.sendMessage("§cInvalid metric: §e" + metric + "§c. Valid: §f" + String.join(", ", STAT_METRICS));
+            return true;
+        }
+        boolean enabled = valueStr.equals("true");
+        if (!plugin.getStatisticsManager().setTracking(counterName, metric, enabled)) {
+            sender.sendMessage("§cStatistics counter §e" + counterName + " §cnot found.");
+            return true;
+        }
+        sender.sendMessage("§a[Portals] Tracking §e" + metric + (enabled ? " §aenabled" : " §cdisabled")
+                + " §afor counter §e" + counterName + "§a.");
+        return true;
+    }
+
     // ---- Help ----
 
     private void sendHelp(CommandSender sender) {
@@ -938,6 +1006,9 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("§e/portal allowendperworld <world> <true|false> §7– Allow or block vanilla end portals/gateways in a world");
         sender.sendMessage("§e/portal allowbedsleeping <world> <true|false> §7– Allow or block bed sleeping (spawn point setting) in a world");
         sender.sendMessage("§e/portal setbuildingheightperworld <world> <maxY|remove> §7– Limit block placement above Y in a world (remove to clear)");
+        sender.sendMessage("§e/portal createstatisticcounter <name> <world> §7– Create a statistics counter for a world");
+        sender.sendMessage("§e/portal removestatisticcounter <name> §7– Delete a statistics counter and its data");
+        sender.sendMessage("§e/portal setstatistictracking <counter> <metric> <true|false> §7– Enable or disable a tracking metric (kills/deaths/wins/blocks-placed/damage-dealt)");
         sender.sendMessage("§e/portal reload §7– Reload config and portals");
     }
 
@@ -1023,6 +1094,19 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
                     allWorlds.addAll(plugin.getWorldManager().listUnloadedWorlds());
                     StringUtil.copyPartialMatches(args[1], allWorlds, completions);
                 }
+                case "createstatisticcounter" -> {
+                    // arg1 = counter name, no suggestions
+                }
+                case "removestatisticcounter" -> {
+                    List<String> counterNames = plugin.getStatisticsManager().getAllCounters()
+                            .stream().map(c -> c.name()).toList();
+                    StringUtil.copyPartialMatches(args[1], counterNames, completions);
+                }
+                case "setstatistictracking" -> {
+                    List<String> counterNames = plugin.getStatisticsManager().getAllCounters()
+                            .stream().map(c -> c.name()).toList();
+                    StringUtil.copyPartialMatches(args[1], counterNames, completions);
+                }
             }
         } else if (args.length == 3 && args[0].equalsIgnoreCase("worldgamemode")) {
             StringUtil.copyPartialMatches(args[2], GAMEMODE_VALUES, completions);
@@ -1065,6 +1149,14 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             List<String> allWorlds = new ArrayList<>(plugin.getWorldManager().listLoadedWorlds());
             allWorlds.addAll(plugin.getWorldManager().listUnloadedWorlds());
             StringUtil.copyPartialMatches(args[4], allWorlds, completions);
+        } else if (args.length == 3 && args[0].equalsIgnoreCase("createstatisticcounter")) {
+            List<String> allWorlds = new ArrayList<>(plugin.getWorldManager().listLoadedWorlds());
+            allWorlds.addAll(plugin.getWorldManager().listUnloadedWorlds());
+            StringUtil.copyPartialMatches(args[2], allWorlds, completions);
+        } else if (args.length == 3 && args[0].equalsIgnoreCase("setstatistictracking")) {
+            StringUtil.copyPartialMatches(args[2], STAT_METRICS, completions);
+        } else if (args.length == 4 && args[0].equalsIgnoreCase("setstatistictracking")) {
+            StringUtil.copyPartialMatches(args[3], BOOL_VALUES, completions);
         }
 
         return completions;

@@ -12,6 +12,10 @@ commands:
     usage: /portal <subcommand>
     permission: eternalworlds.portal.admin
     aliases: [eternalportals]
+  stats:
+    description: View your statistics for a counter
+    usage: /stats <counter-name>
+    permission: eternalworlds.stats.use
 
 permissions:
   eternalworlds.portal.admin:
@@ -19,4 +23,7 @@ permissions:
     default: op
   eternalworlds.portal.use:
     description: Ability to travel through portals
+    default: true
+  eternalworlds.stats.use:
+    description: Ability to view personal statistics
     default: true
