@@ -53,6 +53,8 @@ public class PortalSchedulerManager {
 
     /** portal name (lower-case) -> currently pending phase task */
     private final Map<String, BukkitTask> tasks = new HashMap<>();
+    /** world name (lower-case) -> active block-cleaning task for that world */
+    private final Map<String, BukkitTask> cleaningTasks = new HashMap<>();
 
     public PortalSchedulerManager(EternalWorldsPlugin plugin) {
         this.plugin        = plugin;
@@ -99,6 +101,8 @@ public class PortalSchedulerManager {
     public void cancelAll() {
         tasks.values().forEach(BukkitTask::cancel);
         tasks.clear();
+        cleaningTasks.values().forEach(BukkitTask::cancel);
+        cleaningTasks.clear();
         // Note: we deliberately do NOT wipe scheduler.yml on cancelAll() —
         // that is called on server shutdown and the cycles should resume on next start.
     }
@@ -223,6 +227,12 @@ public class PortalSchedulerManager {
      *      processed CHUNKS_PER_TICK chunks per tick to avoid server lag.
      */
     public void cleanWorld(World world) {
+        String worldKey = world.getName().toLowerCase();
+
+        // Cancel any in-progress clean task for this world before starting a new one.
+        BukkitTask prev = cleaningTasks.remove(worldKey);
+        if (prev != null) prev.cancel();
+
         // 1. Remove entities within radius
         for (Entity entity : world.getEntities()) {
             if (entity instanceof Player) continue;
@@ -238,7 +248,6 @@ public class PortalSchedulerManager {
 
         for (int cx = -chunkRadius; cx <= chunkRadius; cx++) {
             for (int cz = -chunkRadius; cz <= chunkRadius; cz++) {
-                // Skip chunks whose centre is clearly outside the radius
                 if (Math.sqrt((double) cx * cx + (double) cz * cz) * 16 > CLEAN_RADIUS + 16) continue;
                 if (world.isChunkLoaded(cx, cz)) {
                     chunks.add(world.getChunkAt(cx, cz));
@@ -248,38 +257,50 @@ public class PortalSchedulerManager {
 
         if (chunks.isEmpty()) return;
 
-        AtomicInteger index   = new AtomicInteger(0);
-        AtomicReference<BukkitTask> ref = new AtomicReference<>();
+        AtomicInteger index = new AtomicInteger(0);
 
         BukkitTask cleanTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
             int processed = 0;
             while (index.get() < chunks.size() && processed < CHUNKS_PER_TICK) {
-                clearChunk(chunks.get(index.getAndIncrement()));
+                Chunk chunk = chunks.get(index.getAndIncrement());
+                try {
+                    clearChunk(chunk);
+                } catch (Exception e) {
+                    plugin.getLogger().warning("[Portals] Error cleaning chunk ("
+                            + chunk.getX() + "," + chunk.getZ() + ") in '"
+                            + world.getName() + "': " + e.getMessage());
+                }
                 processed++;
             }
             if (index.get() >= chunks.size()) {
-                BukkitTask t = ref.get();
-                if (t != null) t.cancel();
+                BukkitTask self = cleaningTasks.remove(worldKey);
+                if (self != null) self.cancel();
             }
         }, 1L, 1L);
 
-        ref.set(cleanTask);
+        cleaningTasks.put(worldKey, cleanTask);
         plugin.getLogger().info("[Portals] Cleaning world '" + world.getName()
                 + "': " + chunks.size() + " chunks to process.");
     }
 
-    /** Replaces every non-bedrock, non-air block in the chunk with air (no physics update). */
+    /**
+     * Replaces every non-bedrock, non-air block in the chunk with air (no physics update).
+     * The bottom 5 Y-layers (natural bedrock zone) are always skipped as an extra safeguard.
+     */
     private void clearChunk(Chunk chunk) {
         World world = chunk.getWorld();
-        int minY = world.getMinHeight();
-        int maxY = world.getMaxHeight();
+        int minY    = world.getMinHeight();
+        int maxY    = world.getMaxHeight();
+        // Skip the lowest 5 Y-levels — natural bedrock zone in all world types.
+        // This prevents accidental bedrock removal if block-state data is stale.
+        int startY  = minY + 5;
 
         for (int x = 0; x < 16; x++) {
             for (int z = 0; z < 16; z++) {
-                for (int y = minY; y < maxY; y++) {
+                for (int y = startY; y < maxY; y++) {
                     var block = chunk.getBlock(x, y, z);
                     Material type = block.getType();
-                    if (type != Material.BEDROCK && type != Material.AIR && !block.isEmpty()) {
+                    if (type != Material.BEDROCK && !block.isEmpty()) {
                         block.setType(Material.AIR, false);
                     }
                 }
