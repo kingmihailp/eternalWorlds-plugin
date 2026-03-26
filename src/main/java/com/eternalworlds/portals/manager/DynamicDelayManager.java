@@ -674,11 +674,10 @@ public class DynamicDelayManager {
         Scoreboard board = gameScoreboards.remove(key);
         if (board == null) return;
         Scoreboard main = plugin.getServer().getScoreboardManager().getMainScoreboard();
-        World world = plugin.getServer().getWorld(gameWorldName);
-        if (world != null) {
-            for (Player p : world.getPlayers()) {
-                if (p.getScoreboard().equals(board)) p.setScoreboard(main);
-            }
+        // Reset ALL online players — not just those in the game world,
+        // because players may have left the world before the game ended.
+        for (Player p : plugin.getServer().getOnlinePlayers()) {
+            if (p.getScoreboard().equals(board)) p.setScoreboard(main);
         }
     }
 
