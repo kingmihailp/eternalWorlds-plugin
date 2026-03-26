@@ -95,7 +95,10 @@ public class DynamicDelayManager {
             String waitingCommand,       // run every waitingCommandInterval seconds during WAITING
             int    waitingCommandInterval, // seconds between waiting commands (default 5)
             String countdownCommand,     // run once when COUNTDOWN starts (2+ players detected)
-            String gameStartCommand      // run once when GAME_RUNNING begins
+            String gameStartCommand,     // run once when GAME_RUNNING begins
+            // Item-drop countdown shown in actionbar during GAME_RUNNING
+            String itemTimerActionbar,   // nullable; template with {seconds}; null → use gameActionbar
+            int    itemTimerInterval     // seconds between item drops for the countdown (default 30)
     ) {
         /** Returns a copy with the given active flag. */
         DynamicConfig withActive(boolean active) {
@@ -103,7 +106,8 @@ public class DynamicDelayManager {
                     waitingActionbar, countdownActionbar, gameActionbar,
                     winnersHeader, winnersTitle, winnersLine, winnersFooter,
                     scoreboardTitle, scoreboardLines,
-                    waitingCommand, waitingCommandInterval, countdownCommand, gameStartCommand);
+                    waitingCommand, waitingCommandInterval, countdownCommand, gameStartCommand,
+                    itemTimerActionbar, itemTimerInterval);
         }
     }
 
@@ -169,12 +173,16 @@ public class DynamicDelayManager {
             String cdCmd    = cfg.getString(cp + ".countdown.command");
             String startCmd = cfg.getString(cp + ".game-start.command");
 
+            String itemAb  = cfg.getString(path + ".item-timer.actionbar");
+            int    itemInt = cfg.getInt(path + ".item-timer.interval", 30);
+
             configs.put(key.toLowerCase(), new DynamicConfig(
                     cdSec, gameSec, world, active,
                     waitAb, cdAb, gameAb,
                     winHead, winTitle, winLine, winFoot,
                     sbTitle, sbLines.isEmpty() ? null : sbLines,
-                    waitCmd, waitInt, cdCmd, startCmd));
+                    waitCmd, waitInt, cdCmd, startCmd,
+                    itemAb, itemInt));
         }
     }
 
@@ -207,6 +215,11 @@ public class DynamicDelayManager {
             }
             if (dc.countdownCommand()  != null) cfg.set(cp + ".countdown.command",  dc.countdownCommand());
             if (dc.gameStartCommand()  != null) cfg.set(cp + ".game-start.command", dc.gameStartCommand());
+
+            if (dc.itemTimerActionbar() != null) {
+                cfg.set(path + ".item-timer.actionbar", dc.itemTimerActionbar());
+                cfg.set(path + ".item-timer.interval",  dc.itemTimerInterval());
+            }
         });
         try {
             cfg.save(dataFile);
@@ -240,7 +253,9 @@ public class DynamicDelayManager {
                 existing != null ? existing.waitingCommand()           : null,
                 existing != null ? existing.waitingCommandInterval()   : 5,
                 existing != null ? existing.countdownCommand()         : null,
-                existing != null ? existing.gameStartCommand()         : null));
+                existing != null ? existing.gameStartCommand()         : null,
+                existing != null ? existing.itemTimerActionbar()       : null,
+                existing != null ? existing.itemTimerInterval()        : 30));
         save();
     }
 
@@ -505,8 +520,10 @@ public class DynamicDelayManager {
             plugin.getItemRandomizationManager().startRandomization(gameWorldName);
         }
 
-        String template = resolve(dc.gameActionbar(), DEF_GAME_AB);
-        int[] timeLeft = { dc.gameSeconds() };
+        String gameAbTemplate  = resolve(dc.gameActionbar(), DEF_GAME_AB);
+        String itemAbTemplate  = dc.itemTimerActionbar();  // null → fall back to gameAbTemplate
+        int[]  timeLeft        = { dc.gameSeconds() };
+        int[]  itemLeft        = { dc.itemTimerInterval() > 0 ? dc.itemTimerInterval() : 30 };
 
         BukkitTask monitorTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
             if (phases.get(key) != Phase.GAME_RUNNING) return;
@@ -521,13 +538,23 @@ public class DynamicDelayManager {
                 return;
             }
 
-            updateGameScoreboard(key, gameWorldName, activePlayers);
+            updateGameScoreboard(key, gameWorldName, activePlayers, timeLeft[0]);
 
-            String abParsed = ColorUtil.parse(template.replace("{seconds}", String.valueOf(timeLeft[0])));
-            for (Player p : gameWorld.getPlayers()) {
-                sendActionBar(p, abParsed);
+            // Actionbar: item-timer countdown if configured, otherwise game timer
+            String abText;
+            if (itemAbTemplate != null) {
+                abText = ColorUtil.parse(itemAbTemplate.replace("{seconds}", String.valueOf(itemLeft[0])));
+            } else {
+                abText = ColorUtil.parse(gameAbTemplate.replace("{seconds}", String.valueOf(timeLeft[0])));
             }
+            for (Player p : gameWorld.getPlayers()) sendActionBar(p, abText);
+
             if (timeLeft[0] > 0) timeLeft[0]--;
+            if (itemLeft[0] > 1) {
+                itemLeft[0]--;
+            } else {
+                itemLeft[0] = dc.itemTimerInterval() > 0 ? dc.itemTimerInterval() : 30;
+            }
         }, 20L, 20L);
         tasks.put(key + ":monitor", monitorTask);
 
@@ -661,7 +688,7 @@ public class DynamicDelayManager {
         Scoreboard board = plugin.getServer().getScoreboardManager().getNewScoreboard();
         Objective obj = board.registerNewObjective("ewgame", Criteria.DUMMY,
                 LegacyComponentSerializer.legacySection().deserialize(
-                        ColorUtil.parse(titleTpl.replace("{players}", "?"))));
+                        ColorUtil.parse(titleTpl.replace("{players}", "?").replace("{seconds}", "?"))));
         obj.setDisplaySlot(DisplaySlot.SIDEBAR);
 
         // Each line uses a unique invisible entry string ("§0", "§1", … "§f")
@@ -671,7 +698,7 @@ public class DynamicDelayManager {
             Team team = board.registerNewTeam("ewline" + i);
             team.addEntry(entry);
             team.prefix(LegacyComponentSerializer.legacySection().deserialize(
-                    ColorUtil.parse(lines.get(i).replace("{players}", "?"))));
+                    ColorUtil.parse(lines.get(i).replace("{players}", "?").replace("{seconds}", "?"))));
             // Higher score → displayed higher; first line gets the highest score
             obj.getScore(entry).setScore(lines.size() - i);
         }
@@ -683,7 +710,7 @@ public class DynamicDelayManager {
         }
     }
 
-    private void updateGameScoreboard(String key, String gameWorldName, long activePlayers) {
+    private void updateGameScoreboard(String key, String gameWorldName, long activePlayers, int secondsLeft) {
         Scoreboard board = gameScoreboards.get(key);
         if (board == null) return;
         Objective obj = board.getObjective("ewgame");
@@ -694,15 +721,16 @@ public class DynamicDelayManager {
         List<String> lines = (dc != null && dc.scoreboardLines() != null)
                 ? dc.scoreboardLines() : DEF_SCOREBOARD_LINES;
 
-        String count = String.valueOf(activePlayers);
+        String players = String.valueOf(activePlayers);
+        String secs    = String.valueOf(secondsLeft);
         obj.displayName(LegacyComponentSerializer.legacySection().deserialize(
-                ColorUtil.parse(titleTpl.replace("{players}", count))));
+                ColorUtil.parse(titleTpl.replace("{players}", players).replace("{seconds}", secs))));
 
         for (int i = 0; i < Math.min(lines.size(), 16); i++) {
             Team team = board.getTeam("ewline" + i);
             if (team == null) continue;
             team.prefix(LegacyComponentSerializer.legacySection().deserialize(
-                    ColorUtil.parse(lines.get(i).replace("{players}", count))));
+                    ColorUtil.parse(lines.get(i).replace("{players}", players).replace("{seconds}", secs))));
         }
 
         // Assign board to any players who don't have it yet (e.g. spectators)
