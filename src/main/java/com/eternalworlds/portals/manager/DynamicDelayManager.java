@@ -10,6 +10,10 @@ import org.bukkit.World;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitTask;
+import org.bukkit.scoreboard.Criteria;
+import org.bukkit.scoreboard.DisplaySlot;
+import org.bukkit.scoreboard.Objective;
+import org.bukkit.scoreboard.Scoreboard;
 
 import java.io.File;
 import java.io.IOException;
@@ -109,6 +113,8 @@ public class DynamicDelayManager {
      * Cleared when the game ends or the cycle is stopped.
      */
     private final Map<String, Set<UUID>>     gameParticipants = new HashMap<>();
+    /** portalName (lower-case) → active sidebar scoreboard shown during GAME_RUNNING. */
+    private final Map<String, Scoreboard>    gameScoreboards  = new HashMap<>();
 
     public DynamicDelayManager(EternalWorldsPlugin plugin) {
         this.plugin   = plugin;
@@ -216,6 +222,8 @@ public class DynamicDelayManager {
      */
     public void stopDynamic(String portalName) {
         String key = portalName.toLowerCase();
+        Portal stopPortal = plugin.getPortalManager().getPortal(key);
+        if (stopPortal != null) removeGameScoreboard(key, stopPortal.getDestinationWorld());
         unfreezeGameWorld(key);
         cancelTask(key);
         cancelTask(key + ":monitor");
@@ -300,6 +308,9 @@ public class DynamicDelayManager {
     /** Cancels all running tasks (called on plugin disable). */
     public void cancelAll() {
         plugin.getPlayerFreezeManager().unfreezeAll();
+        Scoreboard main = plugin.getServer().getScoreboardManager().getMainScoreboard();
+        for (Player p : plugin.getServer().getOnlinePlayers()) p.setScoreboard(main);
+        gameScoreboards.clear();
         new ArrayList<>(tasks.keySet()).forEach(k -> {
             BukkitTask t = tasks.remove(k);
             if (t != null) t.cancel();
@@ -417,6 +428,8 @@ public class DynamicDelayManager {
         portal.setEnabled(false);
         plugin.getPortalManager().savePortals();
 
+        createGameScoreboard(key, gameWorldName);
+
         String closeMsg = plugin.getMinigameConfigManager().getCloseMessage(key);
         if (closeMsg != null) {
             plugin.getServer().broadcastMessage(ColorUtil.parse(
@@ -444,6 +457,8 @@ public class DynamicDelayManager {
                 return;
             }
 
+            updateGameScoreboard(key, gameWorldName, activePlayers);
+
             String abParsed = ColorUtil.parse(template.replace("{seconds}", String.valueOf(timeLeft[0])));
             for (Player p : gameWorld.getPlayers()) {
                 sendActionBar(p, abParsed);
@@ -467,6 +482,7 @@ public class DynamicDelayManager {
         cancelTask(key);
         cancelTask(key + ":monitor");
 
+        removeGameScoreboard(key, gameWorldName);
         plugin.getItemRandomizationManager().stopRandomization(gameWorldName);
 
         World gameWorld = plugin.getServer().getWorld(gameWorldName);
@@ -564,6 +580,50 @@ public class DynamicDelayManager {
 
     private void sendActionBar(Player player, String legacyText) {
         player.sendActionBar(LegacyComponentSerializer.legacySection().deserialize(legacyText));
+    }
+
+    private void createGameScoreboard(String key, String gameWorldName) {
+        Scoreboard board = plugin.getServer().getScoreboardManager().getNewScoreboard();
+        Objective obj = board.registerNewObjective("ewgame", Criteria.DUMMY,
+                LegacyComponentSerializer.legacySection().deserialize(
+                        ColorUtil.parse("&eИгроков: &c?")));
+        obj.setDisplaySlot(DisplaySlot.SIDEBAR);
+        // Static decoration line (separator)
+        obj.getScore(ColorUtil.parse("&8───────────────")).setScore(1);
+        gameScoreboards.put(key, board);
+        // Assign to all players currently in the game world
+        World world = plugin.getServer().getWorld(gameWorldName);
+        if (world != null) {
+            for (Player p : world.getPlayers()) p.setScoreboard(board);
+        }
+    }
+
+    private void updateGameScoreboard(String key, String gameWorldName, long activePlayers) {
+        Scoreboard board = gameScoreboards.get(key);
+        if (board == null) return;
+        Objective obj = board.getObjective("ewgame");
+        if (obj == null) return;
+        obj.displayName(LegacyComponentSerializer.legacySection().deserialize(
+                ColorUtil.parse("&eИгроков: &c" + activePlayers)));
+        // Give the board to any new players (e.g. spectators who just re-entered)
+        World world = plugin.getServer().getWorld(gameWorldName);
+        if (world != null) {
+            for (Player p : world.getPlayers()) {
+                if (!p.getScoreboard().equals(board)) p.setScoreboard(board);
+            }
+        }
+    }
+
+    private void removeGameScoreboard(String key, String gameWorldName) {
+        Scoreboard board = gameScoreboards.remove(key);
+        if (board == null) return;
+        Scoreboard main = plugin.getServer().getScoreboardManager().getMainScoreboard();
+        World world = plugin.getServer().getWorld(gameWorldName);
+        if (world != null) {
+            for (Player p : world.getPlayers()) {
+                if (p.getScoreboard().equals(board)) p.setScoreboard(main);
+            }
+        }
     }
 
     private void cancelTask(String key) {
