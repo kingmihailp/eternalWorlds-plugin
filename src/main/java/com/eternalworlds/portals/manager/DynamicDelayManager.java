@@ -90,14 +90,20 @@ public class DynamicDelayManager {
             String winnersFooter,
             // Sidebar scoreboard — nullable → use DEF_SCOREBOARD_*
             String       scoreboardTitle,
-            List<String> scoreboardLines
+            List<String> scoreboardLines,
+            // Console commands — nullable means disabled
+            String waitingCommand,       // run every waitingCommandInterval seconds during WAITING
+            int    waitingCommandInterval, // seconds between waiting commands (default 5)
+            String countdownCommand,     // run once when COUNTDOWN starts (2+ players detected)
+            String gameStartCommand      // run once when GAME_RUNNING begins
     ) {
         /** Returns a copy with the given active flag. */
         DynamicConfig withActive(boolean active) {
             return new DynamicConfig(countdownSeconds, gameSeconds, winnersWorld, active,
                     waitingActionbar, countdownActionbar, gameActionbar,
                     winnersHeader, winnersTitle, winnersLine, winnersFooter,
-                    scoreboardTitle, scoreboardLines);
+                    scoreboardTitle, scoreboardLines,
+                    waitingCommand, waitingCommandInterval, countdownCommand, gameStartCommand);
         }
     }
 
@@ -157,11 +163,18 @@ public class DynamicDelayManager {
             String       sbTitle = cfg.getString(path + ".scoreboard.title");
             List<String> sbLines = cfg.getStringList(path + ".scoreboard.lines");
 
+            String cp = path + ".commands";
+            String waitCmd  = cfg.getString(cp + ".waiting.command");
+            int    waitInt  = cfg.getInt(cp + ".waiting.interval", 5);
+            String cdCmd    = cfg.getString(cp + ".countdown.command");
+            String startCmd = cfg.getString(cp + ".game-start.command");
+
             configs.put(key.toLowerCase(), new DynamicConfig(
                     cdSec, gameSec, world, active,
                     waitAb, cdAb, gameAb,
                     winHead, winTitle, winLine, winFoot,
-                    sbTitle, sbLines.isEmpty() ? null : sbLines));
+                    sbTitle, sbLines.isEmpty() ? null : sbLines,
+                    waitCmd, waitInt, cdCmd, startCmd));
         }
     }
 
@@ -186,6 +199,14 @@ public class DynamicDelayManager {
             String sp = path + ".scoreboard";
             if (dc.scoreboardTitle() != null) cfg.set(sp + ".title", dc.scoreboardTitle());
             if (dc.scoreboardLines() != null) cfg.set(sp + ".lines", dc.scoreboardLines());
+
+            String cp = path + ".commands";
+            if (dc.waitingCommand() != null) {
+                cfg.set(cp + ".waiting.command",  dc.waitingCommand());
+                cfg.set(cp + ".waiting.interval", dc.waitingCommandInterval());
+            }
+            if (dc.countdownCommand()  != null) cfg.set(cp + ".countdown.command",  dc.countdownCommand());
+            if (dc.gameStartCommand()  != null) cfg.set(cp + ".game-start.command", dc.gameStartCommand());
         });
         try {
             cfg.save(dataFile);
@@ -214,8 +235,12 @@ public class DynamicDelayManager {
                 existing != null ? existing.winnersTitle()       : null,
                 existing != null ? existing.winnersLine()        : null,
                 existing != null ? existing.winnersFooter()      : null,
-                existing != null ? existing.scoreboardTitle()    : null,
-                existing != null ? existing.scoreboardLines()    : null));
+                existing != null ? existing.scoreboardTitle()          : null,
+                existing != null ? existing.scoreboardLines()          : null,
+                existing != null ? existing.waitingCommand()           : null,
+                existing != null ? existing.waitingCommandInterval()   : 5,
+                existing != null ? existing.countdownCommand()         : null,
+                existing != null ? existing.gameStartCommand()         : null));
         save();
     }
 
@@ -368,8 +393,12 @@ public class DynamicDelayManager {
         tasks.put(key, pollTask);
 
         DynamicConfig dc = configs.get(key);
-        String template = resolve(dc != null ? dc.waitingActionbar() : null, DEF_WAITING_AB);
-        String abParsed = ColorUtil.parse(template);
+        String template    = resolve(dc != null ? dc.waitingActionbar() : null, DEF_WAITING_AB);
+        String abParsed    = ColorUtil.parse(template);
+        String waitCmd     = dc != null ? dc.waitingCommand() : null;
+        int    waitIntSec  = dc != null ? dc.waitingCommandInterval() : 5;
+        int[]  cmdTick     = { 0 };
+
         BukkitTask abTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
             if (phases.get(key) != Phase.WAITING) return;
             Portal p = plugin.getPortalManager().getPortal(key);
@@ -379,6 +408,13 @@ public class DynamicDelayManager {
             for (Player player : destWorld.getPlayers()) {
                 plugin.getPlayerFreezeManager().freeze(player);
                 sendActionBar(player, abParsed);
+            }
+            if (waitCmd != null) {
+                cmdTick[0]++;
+                if (cmdTick[0] >= waitIntSec) {
+                    cmdTick[0] = 0;
+                    dispatchCommand(waitCmd, key, p.getDestinationWorld());
+                }
             }
         }, 20L, 20L);
         tasks.put(key + ":actionbar", abTask);
@@ -399,6 +435,10 @@ public class DynamicDelayManager {
 
         String template = resolve(dc.countdownActionbar(), DEF_COUNTDOWN_AB);
         int[] remaining = { dc.countdownSeconds() };
+
+        if (dc.countdownCommand() != null) {
+            dispatchCommand(dc.countdownCommand(), key, gameWorldName);
+        }
 
         BukkitTask cdTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
             if (phases.get(key) != Phase.COUNTDOWN) return;
@@ -449,6 +489,10 @@ public class DynamicDelayManager {
         plugin.getPortalManager().savePortals();
 
         createGameScoreboard(key, gameWorldName);
+
+        if (dc.gameStartCommand() != null) {
+            dispatchCommand(dc.gameStartCommand(), key, gameWorldName);
+        }
 
         String closeMsg = plugin.getMinigameConfigManager().getCloseMessage(key);
         if (closeMsg != null) {
@@ -678,6 +722,20 @@ public class DynamicDelayManager {
         // because players may have left the world before the game ended.
         for (Player p : plugin.getServer().getOnlinePlayers()) {
             if (p.getScoreboard().equals(board)) p.setScoreboard(main);
+        }
+    }
+
+    /**
+     * Dispatches a console command, replacing {portal} and {world} placeholders.
+     */
+    private void dispatchCommand(String command, String portalKey, String gameWorldName) {
+        String cmd = command
+                .replace("{portal}", portalKey)
+                .replace("{world}",  gameWorldName);
+        try {
+            plugin.getServer().dispatchCommand(plugin.getServer().getConsoleSender(), cmd);
+        } catch (Exception e) {
+            plugin.getLogger().warning("[Portals] Error dispatching command '" + cmd + "': " + e.getMessage());
         }
     }
 
