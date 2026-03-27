@@ -10,10 +10,7 @@ import io.netty.channel.embedded.EmbeddedChannel;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import net.minecraft.network.Connection;
-import net.minecraft.network.PacketFlow;
 import net.minecraft.network.protocol.Packet;
-import net.minecraft.network.protocol.PacketFlow.Codec;
-import net.minecraft.network.protocol.common.ClientboundDisconnectPacket;
 import net.minecraft.network.protocol.game.ClientboundMoveEntityPacket;
 import net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket;
 import net.minecraft.world.entity.Pose;
@@ -23,10 +20,10 @@ import net.minecraft.network.protocol.game.ClientboundRotateHeadPacket;
 import net.minecraft.network.protocol.game.ClientboundSetEquipmentPacket;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ClientInformation;
-import net.minecraft.server.level.ServerGamePacketListenerImpl;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.CommonListenerCookie;
+import net.minecraft.server.network.ServerGamePacketListenerImpl;
 import net.minecraft.world.entity.EquipmentSlot;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -377,8 +374,21 @@ public class NpcManager {
     // ── Fake Connection ───────────────────────────────────────────────────────
 
     private static Connection buildFakeConnection() {
-        Connection conn = new Connection(PacketFlow.CLIENTBOUND);
         try {
+            // PacketFlow was moved/restructured in some Paper 1.21.x builds.
+            // Use reflection to stay compatible regardless of exact class location.
+            Connection conn;
+            try {
+                Class<?> pfClass = Class.forName("net.minecraft.network.PacketFlow");
+                Object clientbound = pfClass.getField("CLIENTBOUND").get(null);
+                conn = Connection.class
+                        .getDeclaredConstructor(pfClass)
+                        .newInstance(clientbound);
+            } catch (Exception e) {
+                // Fallback: no-arg constructor (some Paper builds removed PacketFlow arg)
+                conn = Connection.class.getDeclaredConstructor().newInstance();
+            }
+
             // Inject an EmbeddedChannel so Connection thinks it's connected
             Field chField = Connection.class.getDeclaredField("channel");
             chField.setAccessible(true);
@@ -388,10 +398,10 @@ public class NpcManager {
             Field addrField = Connection.class.getDeclaredField("address");
             addrField.setAccessible(true);
             addrField.set(conn, new java.net.InetSocketAddress("127.0.0.1", 0));
+            return conn;
         } catch (Exception e) {
-            // Field names may differ across builds; connection still usable without the channel
+            throw new RuntimeException("Failed to build fake NPC connection", e);
         }
-        return conn;
     }
 
     // ── Player join/quit handling ─────────────────────────────────────────────
@@ -588,9 +598,9 @@ public class NpcManager {
     }
 
     private void rotateTo(ServerPlayer npc, Player target, World world) {
-        double dx   = target.getLocation().getX() - npc.getX();
-        double dy   = target.getEyeY()            - npc.getEyeY();
-        double dz   = target.getLocation().getZ() - npc.getZ();
+        double dx   = target.getLocation().getX()       - npc.getX();
+        double dy   = target.getEyeLocation().getY()    - npc.getEyeY();
+        double dz   = target.getLocation().getZ()       - npc.getZ();
         double dist = Math.sqrt(dx * dx + dz * dz);
 
         float yaw   = (float)  Math.toDegrees(Math.atan2(-dx, dz));
