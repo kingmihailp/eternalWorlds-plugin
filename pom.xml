@@ -12,6 +12,10 @@
     <properties>
         <java.version>21</java.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!-- Path to the Paper 1.21.1 server jar for NMS compilation.
+             Place paper-1.21.1.jar in the project root named "paper.jar",
+             or override: mvn package -Dpaper.jar=/absolute/path/to/paper.jar -->
+        <paper.jar>${project.basedir}/paper.jar</paper.jar>
     </properties>
 
     <repositories>
@@ -28,12 +32,18 @@
             <version>1.21.1-R0.1-SNAPSHOT</version>
             <scope>provided</scope>
         </dependency>
-        <!-- NMS access for player-model NPCs (Mojang-mapped) -->
+        <!--
+            NMS access (ServerPlayer, packets, etc.) for player-model NPCs.
+            paper-mojangapi was removed after Paper 1.20.4, so we compile against
+            the server jar directly.  Place your Paper 1.21.1 server jar in the
+            project root and name it  paper.jar  (or override via -Dpaper.jar=…).
+        -->
         <dependency>
             <groupId>io.papermc.paper</groupId>
-            <artifactId>paper-mojangapi</artifactId>
-            <version>1.21.1-R0.1-SNAPSHOT</version>
-            <scope>provided</scope>
+            <artifactId>paper-server-nms</artifactId>
+            <version>1.21.1</version>
+            <scope>system</scope>
+            <systemPath>${paper.jar}</systemPath>
         </dependency>
     </dependencies>
 
