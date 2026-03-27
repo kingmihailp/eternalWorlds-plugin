@@ -37,10 +37,6 @@ tasks {
         options.encoding = "UTF-8"
     }
     processResources {
-        val props = mapOf("version" to project.version)
-        inputs.properties(props)
-        filesMatching("plugin.yml") {
-            expand(props)
-        }
+        // version is hardcoded in plugin.yml — no template expansion needed
     }
 }

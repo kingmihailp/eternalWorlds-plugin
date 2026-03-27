@@ -375,19 +375,29 @@ public class NpcManager {
 
     private static Connection buildFakeConnection() {
         try {
-            // PacketFlow was moved/restructured in some Paper 1.21.x builds.
-            // Use reflection to stay compatible regardless of exact class location.
-            Connection conn;
-            try {
-                Class<?> pfClass = Class.forName("net.minecraft.network.PacketFlow");
-                Object clientbound = pfClass.getField("CLIENTBOUND").get(null);
-                conn = Connection.class
-                        .getDeclaredConstructor(pfClass)
-                        .newInstance(clientbound);
-            } catch (Exception e) {
-                // Fallback: no-arg constructor (some Paper builds removed PacketFlow arg)
-                conn = Connection.class.getDeclaredConstructor().newInstance();
+            // Enumerate Connection's declared constructors and call the first one
+            // whose parameters we can satisfy. Getting PacketFlow from the constructor's
+            // own parameter type avoids classloader mismatch (Class.forName would return
+            // a different Class object than the one Connection expects).
+            Connection conn = null;
+            for (java.lang.reflect.Constructor<?> ctor : Connection.class.getDeclaredConstructors()) {
+                ctor.setAccessible(true);
+                Class<?>[] params = ctor.getParameterTypes();
+                try {
+                    if (params.length == 0) {
+                        conn = (Connection) ctor.newInstance();
+                    } else if (params.length == 1 && params[0].isEnum()) {
+                        // Single enum param → PacketFlow; find the CLIENTBOUND constant
+                        Object clientbound = null;
+                        for (Object ec : params[0].getEnumConstants()) {
+                            if (ec.toString().equals("CLIENTBOUND")) { clientbound = ec; break; }
+                        }
+                        if (clientbound != null) conn = (Connection) ctor.newInstance(clientbound);
+                    }
+                    if (conn != null) break;
+                } catch (Exception ignored) {}
             }
+            if (conn == null) throw new IllegalStateException("No suitable Connection constructor found");
 
             // Inject an EmbeddedChannel so Connection thinks it's connected
             Field chField = Connection.class.getDeclaredField("channel");
