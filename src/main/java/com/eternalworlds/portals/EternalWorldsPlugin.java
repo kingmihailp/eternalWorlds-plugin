@@ -5,6 +5,7 @@ import com.eternalworlds.portals.command.PortalCommand;
 import com.eternalworlds.portals.command.StatsCommand;
 import com.eternalworlds.portals.listener.NpcListener;
 import com.eternalworlds.portals.listener.PortalListener;
+import com.eternalworlds.portals.listener.ProjectilesListener;
 import com.eternalworlds.portals.listener.StatisticsListener;
 import com.eternalworlds.portals.manager.DynamicDelayManager;
 import com.eternalworlds.portals.manager.ItemRandomizationManager;
@@ -67,6 +68,7 @@ public final class EternalWorldsPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(playerFreezeManager, this);
         getServer().getPluginManager().registerEvents(new StatisticsListener(this), this);
         getServer().getPluginManager().registerEvents(new NpcListener(this), this);
+        getServer().getPluginManager().registerEvents(new ProjectilesListener(this), this);
 
         NpcCommand npcExecutor = new NpcCommand(this);
         for (String cmd : new String[]{"npc", "spawnnpc", "removenpc", "npcattributes", "setnpcitems"}) {

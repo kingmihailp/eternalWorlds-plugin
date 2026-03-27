@@ -35,7 +35,8 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             "allownetherperworld", "allowendperworld",
             "setbuildingheightperworld", "allowbedsleeping",
             "setcleaningminy",
-            "createstatisticcounter", "removestatisticcounter", "setstatistictracking"
+            "createstatisticcounter", "removestatisticcounter", "setstatistictracking",
+            "allowprojectilesfeatures"
     );
 
     private static final List<String> STAT_METRICS = Arrays.asList(
@@ -110,6 +111,7 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             case "createstatisticcounter"   -> cmdCreateStatisticCounter(sender, args);
             case "removestatisticcounter"   -> cmdRemoveStatisticCounter(sender, args);
             case "setstatistictracking"     -> cmdSetStatisticTracking(sender, args);
+            case "allowprojectilesfeatures" -> cmdAllowProjectilesFeatures(sender, args);
             default                         -> { sendHelp(sender); yield true; }
         };
     }
@@ -850,6 +852,26 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
+    // /portal allowprojectilesfeatures <worldName> <true|false>
+    private boolean cmdAllowProjectilesFeatures(CommandSender sender, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage("§cUsage: /portal allowprojectilesfeatures <worldName> <true|false>");
+            return true;
+        }
+        String worldName = args[1];
+        String value     = args[2].toLowerCase();
+        if (!value.equals("true") && !value.equals("false")) {
+            sender.sendMessage("§cInvalid value: §e" + value + "§c. Use §ftrue §cor §ffalse§c.");
+            return true;
+        }
+        boolean enabled = value.equals("true");
+        plugin.getWorldConfigManager().setProjectilesFeaturesEnabled(worldName, enabled);
+        sender.sendMessage("§a[Portals] Projectiles features in world §e" + worldName
+                + (enabled ? " §aenabled." : " §cdisabled.")
+                + " §7(eggs/snowballs/fireballs knockback" + (enabled ? " + fireball throw" : "") + ")");
+        return true;
+    }
+
     // /portal allowbedsleeping <worldName> <true|false>
     private boolean cmdAllowBedSleeping(CommandSender sender, String[] args) {
         if (args.length < 3) {
@@ -1009,6 +1031,7 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("§e/portal createstatisticcounter <name> <world> §7– Create a statistics counter for a world");
         sender.sendMessage("§e/portal removestatisticcounter <name> §7– Delete a statistics counter and its data");
         sender.sendMessage("§e/portal setstatistictracking <counter> <metric> <true|false> §7– Enable or disable a tracking metric (kills/deaths/wins/blocks-placed/damage-dealt)");
+        sender.sendMessage("§e/portal allowprojectilesfeatures <world> <true|false> §7– Enable knockback for eggs/snowballs/fireballs and allow throwing fireballs with Fire Charge");
         sender.sendMessage("§e/portal reload §7– Reload config and portals");
     }
 
@@ -1051,7 +1074,7 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
                         "worlditemrandomization", "seteliminationylevel", "setcleaningworld",
                         "allownetherperworld", "allowendperworld",
                         "setbuildingheightperworld", "allowbedsleeping",
-                        "setcleaningminy" -> {
+                        "setcleaningminy", "allowprojectilesfeatures" -> {
                     List<String> allWorlds = new ArrayList<>(plugin.getWorldManager().listLoadedWorlds());
                     allWorlds.addAll(plugin.getWorldManager().listUnloadedWorlds());
                     StringUtil.copyPartialMatches(args[1], allWorlds, completions);
@@ -1119,6 +1142,8 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         } else if (args.length == 3 && args[0].equalsIgnoreCase("allowendperworld")) {
             StringUtil.copyPartialMatches(args[2], BOOL_VALUES, completions);
         } else if (args.length == 3 && args[0].equalsIgnoreCase("allowbedsleeping")) {
+            StringUtil.copyPartialMatches(args[2], BOOL_VALUES, completions);
+        } else if (args.length == 3 && args[0].equalsIgnoreCase("allowprojectilesfeatures")) {
             StringUtil.copyPartialMatches(args[2], BOOL_VALUES, completions);
         } else if (args.length == 3 && args[0].equalsIgnoreCase("setbuildingheightperworld")) {
             StringUtil.copyPartialMatches(args[2], List.of("remove"), completions);

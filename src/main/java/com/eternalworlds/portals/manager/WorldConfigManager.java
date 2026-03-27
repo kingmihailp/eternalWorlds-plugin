@@ -90,6 +90,12 @@ public class WorldConfigManager {
      * Blocks BELOW this Y are never removed. Null = use default (world minHeight + 5).
      */
     private final Map<String, Integer>           worldCleanMinY       = new HashMap<>();
+    /**
+     * world name (lower-case) -> projectiles features enabled.
+     * When true: eggs, snowballs and fireballs apply knockback on hit;
+     * players can throw fireballs by right-clicking with a Fire Charge.
+     */
+    private final Map<String, Boolean>           worldProjectilesFeatures = new HashMap<>();
 
     public WorldConfigManager(EternalWorldsPlugin plugin) {
         this.plugin = plugin;
@@ -113,6 +119,7 @@ public class WorldConfigManager {
         worldBuildingHeight.clear();
         worldBedSleeping.clear();
         worldCleanMinY.clear();
+        worldProjectilesFeatures.clear();
         if (!file.exists()) return;
 
         YamlConfiguration cfg = YamlConfiguration.loadConfiguration(file);
@@ -181,6 +188,10 @@ public class WorldConfigManager {
             String cleanMinYPath = "worlds." + world + ".clean-min-y";
             if (cfg.contains(cleanMinYPath)) worldCleanMinY.put(key, cfg.getInt(cleanMinYPath));
 
+            // Projectiles features
+            String projPath = "worlds." + world + ".projectiles-features";
+            if (cfg.contains(projPath)) worldProjectilesFeatures.put(key, cfg.getBoolean(projPath));
+
             // Spawn
             String spawnPath = "worlds." + world + ".spawn";
             if (cfg.isConfigurationSection(spawnPath)) {
@@ -209,6 +220,7 @@ public class WorldConfigManager {
         worlds.addAll(worldBuildingHeight.keySet());
         worlds.addAll(worldBedSleeping.keySet());
         worlds.addAll(worldCleanMinY.keySet());
+        worlds.addAll(worldProjectilesFeatures.keySet());
 
         YamlConfiguration cfg = new YamlConfiguration();
         for (String world : worlds) {
@@ -244,6 +256,9 @@ public class WorldConfigManager {
 
             Integer cleanMinY = worldCleanMinY.get(world);
             if (cleanMinY != null) cfg.set("worlds." + world + ".clean-min-y", cleanMinY);
+
+            Boolean projFeatures = worldProjectilesFeatures.get(world);
+            if (projFeatures != null) cfg.set("worlds." + world + ".projectiles-features", projFeatures);
 
             EliminationConfig ec = worldElimination.get(world);
             if (ec != null) {
@@ -454,6 +469,16 @@ public class WorldConfigManager {
 
     public void setBedSleepingAllowed(String worldName, boolean allowed) {
         worldBedSleeping.put(worldName.toLowerCase(), allowed);
+        save();
+    }
+
+    /** Returns true if projectiles features (knockback + fireball throw) are enabled in this world. */
+    public boolean isProjectilesFeaturesEnabled(String worldName) {
+        return Boolean.TRUE.equals(worldProjectilesFeatures.get(worldName.toLowerCase()));
+    }
+
+    public void setProjectilesFeaturesEnabled(String worldName, boolean enabled) {
+        worldProjectilesFeatures.put(worldName.toLowerCase(), enabled);
         save();
     }
 }
