@@ -60,6 +60,7 @@ public class NpcCommand implements CommandExecutor, TabCompleter {
         if (args.length < 1) {
             sender.sendMessage("§6=== EternalWorlds NPC ===");
             sender.sendMessage("§e/npc reload §7– Reload npcs.yml and skins.yml without restart");
+            sender.sendMessage("§e/npc setpose <id> <standing|crouching|sitting> §7– Set NPC pose");
             return true;
         }
         return switch (args[0].toLowerCase()) {
@@ -70,11 +71,33 @@ public class NpcCommand implements CommandExecutor, TabCompleter {
                 sender.sendMessage("§a[NPC] Reloaded §e" + count + "§a NPC(s) from disk.");
                 yield true;
             }
+            case "setpose" -> cmdNpcSetPose(sender, Arrays.copyOfRange(args, 1, args.length));
             default -> {
-                sender.sendMessage("§cUnknown subcommand §e" + args[0] + "§c. Use §f/npc reload§c.");
+                sender.sendMessage("§cUnknown subcommand §e" + args[0] + "§c. Valid: reload, setpose.");
                 yield true;
             }
         };
+    }
+
+    // /npc setpose <id> <standing|crouching|sitting>
+    private boolean cmdNpcSetPose(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            sender.sendMessage("§cUsage: /npc setpose <id> <standing|crouching|sitting>");
+            return true;
+        }
+        String id   = args[0].toLowerCase();
+        String pose = args[1].toLowerCase();
+
+        if (!NpcManager.VALID_POSES.contains(pose)) {
+            sender.sendMessage("§cInvalid pose §e" + pose + "§c. Valid: standing, crouching, sitting.");
+            return true;
+        }
+        if (!plugin.getNpcManager().setPose(id, pose)) {
+            sender.sendMessage("§cNPC §e" + id + " §cnot found.");
+            return true;
+        }
+        sender.sendMessage("§a[NPC] Pose for §e" + id + "§a set to §e" + pose + "§a.");
+        return true;
     }
 
     // /spawnnpc <id>
@@ -214,8 +237,15 @@ public class NpcCommand implements CommandExecutor, TabCompleter {
 
         switch (command.getName().toLowerCase()) {
             case "npc" -> {
-                if (args.length == 1)
-                    StringUtil.copyPartialMatches(args[0], List.of("reload"), completions);
+                if (args.length == 1) {
+                    StringUtil.copyPartialMatches(args[0], List.of("reload", "setpose"), completions);
+                } else if (args.length == 2 && args[0].equalsIgnoreCase("setpose")) {
+                    List<String> npcIds2 = plugin.getNpcManager().getAllNpcs()
+                            .stream().map(NpcData::getId).toList();
+                    StringUtil.copyPartialMatches(args[1], npcIds2, completions);
+                } else if (args.length == 3 && args[0].equalsIgnoreCase("setpose")) {
+                    StringUtil.copyPartialMatches(args[2], NpcManager.VALID_POSES, completions);
+                }
             }
             case "removenpc" -> {
                 if (args.length == 1) StringUtil.copyPartialMatches(args[0], npcIds, completions);

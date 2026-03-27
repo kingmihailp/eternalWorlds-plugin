@@ -17,6 +17,7 @@ public class NpcData {
     private String  skinName;       // nullable — key in skins.yml
     private String  clickCommand;   // nullable — supports {player}, {npc}
     private boolean lookAtNearest;  // default: true
+    private String  pose;           // "standing" | "crouching" | "sitting", default "standing"
     private final Map<String, ItemStack> equipment = new LinkedHashMap<>();
 
     /** Create a brand-new NPC (UUID derived from id for stability). */
@@ -27,13 +28,14 @@ public class NpcData {
         this.x = x; this.y = y; this.z = z;
         this.yaw          = yaw;
         this.lookAtNearest = true;
+        this.pose          = "standing";
     }
 
     /** Full constructor used when loading from npcs.yml. */
     public NpcData(String id, UUID uuid, String displayName,
                    String worldName, double x, double y, double z, float yaw,
                    String skinName, String clickCommand, boolean lookAtNearest,
-                   Map<String, ItemStack> equipment) {
+                   String pose, Map<String, ItemStack> equipment) {
         this.id           = id;
         this.uuid         = uuid;
         this.displayName  = displayName;
@@ -43,6 +45,7 @@ public class NpcData {
         this.skinName     = skinName;
         this.clickCommand = clickCommand;
         this.lookAtNearest = lookAtNearest;
+        this.pose          = pose != null ? pose : "standing";
         this.equipment.putAll(equipment);
     }
 
@@ -59,6 +62,7 @@ public class NpcData {
     public String  getSkinName()       { return skinName; }
     public String  getClickCommand()   { return clickCommand; }
     public boolean isLookAtNearest()   { return lookAtNearest; }
+    public String  getPose()           { return pose != null ? pose : "standing"; }
     public Map<String, ItemStack> getEquipment() { return equipment; }
 
     // ── Setters ───────────────────────────────────────────────────────────────
@@ -67,6 +71,7 @@ public class NpcData {
     public void setSkinName(String v)       { this.skinName     = v; }
     public void setClickCommand(String v)   { this.clickCommand = v; }
     public void setLookAtNearest(boolean v) { this.lookAtNearest = v; }
+    public void setPose(String v)           { this.pose = v; }
 
     public void setEquipmentSlot(String slot, ItemStack item) {
         if (item == null || item.getType().isAir()) equipment.remove(slot);

@@ -15,6 +15,8 @@ import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.PacketFlow.Codec;
 import net.minecraft.network.protocol.common.ClientboundDisconnectPacket;
 import net.minecraft.network.protocol.game.ClientboundMoveEntityPacket;
+import net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket;
+import net.minecraft.world.entity.Pose;
 import net.minecraft.network.protocol.game.ClientboundPlayerInfoRemovePacket;
 import net.minecraft.network.protocol.game.ClientboundPlayerInfoUpdatePacket;
 import net.minecraft.network.protocol.game.ClientboundRotateHeadPacket;
@@ -106,8 +108,10 @@ public class NpcManager {
 
     private final Map<String, NpcData>     npcs        = new LinkedHashMap<>();
     private final Map<String, SkinEntry>   skins       = new LinkedHashMap<>();
-    private final Map<String, ServerPlayer> activeNpcs = new HashMap<>();
+    private final Map<String, ServerPlayer> activeNpcs   = new HashMap<>();
     private final Map<String, TextDisplay>  nameDisplays = new HashMap<>();
+    /** Invisible armor-stand seat used for the "sitting" pose. */
+    private final Map<String, org.bukkit.entity.Entity> seatEntities = new HashMap<>();
     /** Maps NMS entity ID → NPC id for fast look-up in event handlers. */
     private final Map<Integer, String>      entityIdMap  = new HashMap<>();
     /** Tracks NPC UUIDs so we can recognize join/quit events as fake. */
@@ -182,8 +186,9 @@ public class NpcManager {
                 }
             }
 
+            String pose = cfg.getString(path + ".pose", "standing");
             npcs.put(id, new NpcData(id, uuid, displayName, worldName,
-                    x, y, z, yaw, skinName, clickCommand, lookAtNearest, equipment));
+                    x, y, z, yaw, skinName, clickCommand, lookAtNearest, pose, equipment));
         }
 
         // Spawn after a 1-tick delay so all worlds are loaded
@@ -207,6 +212,7 @@ public class NpcManager {
             if (data.getClickCommand() != null)
                 cfg.set(path + ".click-command",data.getClickCommand());
             cfg.set(path + ".look-at-nearest",  data.isLookAtNearest());
+            cfg.set(path + ".pose",             data.getPose());
             data.getEquipment().forEach((slot, item) ->
                     cfg.set(path + ".equipment." + slot, item));
         });
@@ -329,10 +335,17 @@ public class NpcManager {
 
         // Spawn TextDisplay for custom name (if set)
         if (data.getDisplayName() != null) spawnNameDisplay(data, world);
+
+        // Apply persisted pose (crouching / sitting)
+        applyPose(data, npc, world);
     }
 
     public void despawnEntity(String id) {
         id = id.toLowerCase();
+        // Remove seat entity (used for sitting pose)
+        org.bukkit.entity.Entity seat = seatEntities.remove(id);
+        if (seat != null && !seat.isDead()) seat.remove();
+
         TextDisplay display = nameDisplays.remove(id);
         if (display != null && !display.isDead()) display.remove();
 
@@ -450,6 +463,94 @@ public class NpcManager {
         if (displayName != null) {
             World world = plugin.getServer().getWorld(data.getWorldName());
             if (world != null) spawnNameDisplay(data, world);
+        }
+    }
+
+    // ── Pose ──────────────────────────────────────────────────────────────────
+
+    /** Valid pose names accepted by commands. */
+    public static final List<String> VALID_POSES = List.of("standing", "crouching", "sitting");
+
+    /**
+     * Updates the NPC's pose, persists it to {@code npcs.yml}, and applies it
+     * to the live entity immediately.
+     */
+    public boolean setPose(String id, String pose) {
+        NpcData data = npcs.get(id.toLowerCase());
+        if (data == null) return false;
+        data.setPose(pose);
+        save();
+        ServerPlayer npc = activeNpcs.get(id.toLowerCase());
+        if (npc != null) {
+            World world = plugin.getServer().getWorld(data.getWorldName());
+            if (world != null) {
+                // Remove any existing seat before applying new pose
+                org.bukkit.entity.Entity oldSeat = seatEntities.remove(id.toLowerCase());
+                if (oldSeat != null && !oldSeat.isDead()) oldSeat.remove();
+                applyPose(data, npc, world);
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Applies the pose stored in {@code data} to the live NMS entity.
+     * Called both on initial spawn and when pose is changed at runtime.
+     */
+    private void applyPose(NpcData data, ServerPlayer npc, World world) {
+        switch (data.getPose()) {
+            case "crouching" -> {
+                npc.setPose(Pose.CROUCHING);
+                sendEntityMetadata(npc, world);
+            }
+            case "sitting" -> {
+                // Reset to standing first so the entity can be mounted
+                npc.setPose(Pose.STANDING);
+                sendEntityMetadata(npc, world);
+                spawnSeat(data, npc, world);
+            }
+            default -> { // "standing"
+                npc.setPose(Pose.STANDING);
+                sendEntityMetadata(npc, world);
+            }
+        }
+    }
+
+    /**
+     * Spawns an invisible small armor stand at the NPC's position and makes
+     * the NPC ride it, producing a natural "sitting" appearance.
+     *
+     * <p>The armor stand is offset -0.6 on Y so the NPC appears to sit at
+     * approximately the same ground level as when standing.
+     */
+    private void spawnSeat(NpcData data, ServerPlayer npc, World world) {
+        // Small armor stand passenger-riding offset ≈ 0.60 blocks
+        Location seatLoc = new Location(world, data.getX(), data.getY() - 0.6, data.getZ());
+        org.bukkit.entity.ArmorStand seat =
+                (org.bukkit.entity.ArmorStand) world.spawnEntity(seatLoc, EntityType.ARMOR_STAND);
+        seat.setInvisible(true);
+        seat.setSmall(true);
+        seat.setArms(false);
+        seat.setBasePlate(false);
+        seat.setGravity(false);
+        seat.setSilent(true);
+        seat.setInvulnerable(true);
+        seat.setPersistent(false);
+        seat.addPassenger(npc.getBukkitEntity());
+        seatEntities.put(data.getId(), seat);
+    }
+
+    /**
+     * Sends a full entity-data (metadata) packet to every real player in
+     * the NPC's world so pose changes are visible immediately.
+     */
+    private void sendEntityMetadata(ServerPlayer npc, World world) {
+        var dataValues = npc.getEntityData().packAll();
+        if (dataValues == null || dataValues.isEmpty()) return;
+        var packet = new ClientboundSetEntityDataPacket(npc.getId(), dataValues);
+        for (Player p : world.getPlayers()) {
+            if (!npcUuids.contains(p.getUniqueId()))
+                ((CraftPlayer) p).getHandle().connection.send(packet);
         }
     }
 
