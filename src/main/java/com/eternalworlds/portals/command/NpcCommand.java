@@ -61,6 +61,8 @@ public class NpcCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage("§6=== EternalWorlds NPC ===");
             sender.sendMessage("§e/npc reload §7– Reload npcs.yml and skins.yml without restart");
             sender.sendMessage("§e/npc setpose <id> <standing|crouching|sitting> §7– Set NPC pose");
+            sender.sendMessage("§e/npc addskin <name> <value> <signature> §7– Add skin from mineskin.org");
+            sender.sendMessage("§e/npc removeskin <name> §7– Remove skin entry");
             return true;
         }
         return switch (args[0].toLowerCase()) {
@@ -71,12 +73,48 @@ public class NpcCommand implements CommandExecutor, TabCompleter {
                 sender.sendMessage("§a[NPC] Reloaded §e" + count + "§a NPC(s) from disk.");
                 yield true;
             }
-            case "setpose" -> cmdNpcSetPose(sender, Arrays.copyOfRange(args, 1, args.length));
+            case "setpose"    -> cmdNpcSetPose(sender, Arrays.copyOfRange(args, 1, args.length));
+            case "addskin"    -> cmdNpcAddSkin(sender, Arrays.copyOfRange(args, 1, args.length));
+            case "removeskin" -> cmdNpcRemoveSkin(sender, Arrays.copyOfRange(args, 1, args.length));
             default -> {
-                sender.sendMessage("§cUnknown subcommand §e" + args[0] + "§c. Valid: reload, setpose.");
+                sender.sendMessage("§cUnknown subcommand §e" + args[0]
+                        + "§c. Valid: reload, setpose, addskin, removeskin.");
                 yield true;
             }
         };
+    }
+
+    // /npc addskin <name> <value> <signature>
+    private boolean cmdNpcAddSkin(CommandSender sender, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage("§cUsage: /npc addskin <name> <base64value> <signature>");
+            sender.sendMessage("§7Get value+signature from §fmineskin.org");
+            return true;
+        }
+        String name      = args[0].toLowerCase();
+        String value     = args[1];
+        String signature = args[2];
+        plugin.getNpcManager().addSkin(name, value, signature);
+        sender.sendMessage("§a[NPC] Skin §e" + name + "§a saved to §fskins.yml§a.");
+        sender.sendMessage("§7Apply with: §f/npcattributes <npcId> skin " + name);
+        return true;
+    }
+
+    // /npc removeskin <name>
+    private boolean cmdNpcRemoveSkin(CommandSender sender, String[] args) {
+        if (args.length < 1) {
+            sender.sendMessage("§cUsage: /npc removeskin <name>");
+            return true;
+        }
+        String name = args[0].toLowerCase();
+        if (!plugin.getNpcManager().getSkins().containsKey(name)) {
+            sender.sendMessage("§cSkin §e" + name + "§c not found.");
+            return true;
+        }
+        plugin.getNpcManager().getSkins().remove(name);
+        plugin.getNpcManager().saveSkins();
+        sender.sendMessage("§a[NPC] Skin §e" + name + "§a removed.");
+        return true;
     }
 
     // /npc setpose <id> <standing|crouching|sitting>
@@ -238,11 +276,18 @@ public class NpcCommand implements CommandExecutor, TabCompleter {
         switch (command.getName().toLowerCase()) {
             case "npc" -> {
                 if (args.length == 1) {
-                    StringUtil.copyPartialMatches(args[0], List.of("reload", "setpose"), completions);
-                } else if (args.length == 2 && args[0].equalsIgnoreCase("setpose")) {
-                    List<String> npcIds2 = plugin.getNpcManager().getAllNpcs()
-                            .stream().map(NpcData::getId).toList();
-                    StringUtil.copyPartialMatches(args[1], npcIds2, completions);
+                    StringUtil.copyPartialMatches(args[0],
+                            List.of("reload", "setpose", "addskin", "removeskin"), completions);
+                } else if (args.length == 2) {
+                    String sub = args[0].toLowerCase();
+                    if (sub.equals("setpose")) {
+                        List<String> npcIds2 = plugin.getNpcManager().getAllNpcs()
+                                .stream().map(NpcData::getId).toList();
+                        StringUtil.copyPartialMatches(args[1], npcIds2, completions);
+                    } else if (sub.equals("removeskin")) {
+                        List<String> skinNames = new ArrayList<>(plugin.getNpcManager().getSkins().keySet());
+                        StringUtil.copyPartialMatches(args[1], skinNames, completions);
+                    }
                 } else if (args.length == 3 && args[0].equalsIgnoreCase("setpose")) {
                     StringUtil.copyPartialMatches(args[2], NpcManager.VALID_POSES, completions);
                 }

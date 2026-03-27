@@ -134,7 +134,21 @@ public class NpcManager {
     }
 
     private void loadSkins() {
-        if (!skinsFile.exists()) return;
+        if (!skinsFile.exists()) {
+            // Create an empty template so admins know the file location and format
+            YamlConfiguration empty = new YamlConfiguration();
+            empty.options().setHeader(List.of(
+                    "skins.yml — NPC skin library",
+                    "Add skins via:  /npc addskin <name> <base64value> <signature>",
+                    "Or manually:",
+                    "skins:",
+                    "  example:",
+                    "    value: <base64 texture value from mineskin.org>",
+                    "    signature: <mojang signature>"
+            ));
+            trySave(empty, skinsFile);
+            return;
+        }
         YamlConfiguration cfg = YamlConfiguration.loadConfiguration(skinsFile);
         ConfigurationSection sec = cfg.getConfigurationSection("skins");
         if (sec == null) return;
@@ -143,6 +157,15 @@ public class NpcManager {
             String sig   = sec.getString("skins." + name + ".signature");
             if (value != null && sig != null) skins.put(name, new SkinEntry(value, sig));
         }
+    }
+
+    /**
+     * Adds (or replaces) a skin entry and immediately persists {@code skins.yml}.
+     * Called from {@code /npc addskin}.
+     */
+    public void addSkin(String name, String value, String signature) {
+        skins.put(name.toLowerCase(), new SkinEntry(value, signature));
+        saveSkins();
     }
 
     public void saveSkins() {
@@ -321,9 +344,20 @@ public class NpcManager {
         // Attach fake listener (constructor also sets npc.connection = this)
         new FakePacketListener(nmsServer, fakeConn, npc, cookie);
 
+        // Send PlayerInfo (skin/profile) to all online real players BEFORE adding the entity
+        // to the world. The entity tracker sends the spawn packet as soon as the NPC enters a
+        // player's view range; if PlayerInfo hasn't arrived first the client has no profile to
+        // render and shows nothing (invisible NPC).
+        var infoPacket = ClientboundPlayerInfoUpdatePacket.createPlayerInitializing(List.of(npc));
+        for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
+            if (!npcUuids.contains(onlinePlayer.getUniqueId())) {
+                ((CraftPlayer) onlinePlayer).getHandle().connection.send(infoPacket);
+            }
+        }
+
         // Bypass placeNewPlayer entirely: it calls setupInboundProtocol which validates
         // the connection direction AND replaces our FakePacketListener with a real one.
-        // Instead, add the entity directly to the world level and broadcast skin info manually.
+        // Add the entity directly to the world level instead.
         try {
             java.lang.reflect.Method addNewPlayer =
                     net.minecraft.server.level.ServerLevel.class
@@ -336,14 +370,6 @@ public class NpcManager {
             throw new RuntimeException("Failed to add NPC to world", e);
         }
 
-        // Broadcast PlayerInfo (skin) to all currently online real players so their client
-        // loads the NPC skin before receiving the spawn packet.
-        var infoPacket = ClientboundPlayerInfoUpdatePacket.createPlayerInitializing(List.of(npc));
-        for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
-            if (!npcUuids.contains(onlinePlayer.getUniqueId())) {
-                ((CraftPlayer) onlinePlayer).getHandle().connection.send(infoPacket);
-            }
-        }
         // Remove from tab list 2 s later (skin already cached by client)
         final UUID npcUuid = npc.getUUID();
         plugin.getServer().getScheduler().runTaskLater(plugin, () ->
