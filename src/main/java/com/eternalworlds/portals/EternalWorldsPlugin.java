@@ -59,9 +59,9 @@ public final class EternalWorldsPlugin extends JavaPlugin {
         dynamicDelayManager.loadAndRestart();
 
         PortalCommand executor = new PortalCommand(this);
-        var cmd = getCommand("portal");
-        cmd.setExecutor(executor);
-        cmd.setTabCompleter(executor);
+        var portalCmd = getCommand("portal");
+        portalCmd.setExecutor(executor);
+        portalCmd.setTabCompleter(executor);
 
         getServer().getPluginManager().registerEvents(new PortalListener(this), this);
         getServer().getPluginManager().registerEvents(playerFreezeManager, this);
