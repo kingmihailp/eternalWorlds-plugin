@@ -149,18 +149,18 @@ public class BossManager {
         activeGames.put(worldName.toLowerCase(), game.withBossUuid(boss.getUniqueId()));
 
         // 3× entity scale
-        AttributeInstance scale = boss.getAttribute(Attribute.SCALE);
+        AttributeInstance scale = boss.getAttribute(Attribute.GENERIC_SCALE);
         if (scale != null) scale.setBaseValue(3.0);
 
         // 100 HP max health (50 hearts)
-        AttributeInstance maxHp = boss.getAttribute(Attribute.MAX_HEALTH);
+        AttributeInstance maxHp = boss.getAttribute(Attribute.GENERIC_MAX_HEALTH);
         if (maxHp != null) {
             maxHp.setBaseValue(100.0);
             boss.setHealth(100.0);
         }
 
         // −25 % movement speed
-        AttributeInstance speed = boss.getAttribute(Attribute.MOVEMENT_SPEED);
+        AttributeInstance speed = boss.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED);
         if (speed != null) {
             speed.removeModifier(SPEED_MOD_KEY);
             speed.addModifier(new AttributeModifier(
@@ -179,16 +179,16 @@ public class BossManager {
 
     /** Removes all boss-related attributes and effects. */
     public void removeBossEffects(Player boss) {
-        AttributeInstance scale = boss.getAttribute(Attribute.SCALE);
+        AttributeInstance scale = boss.getAttribute(Attribute.GENERIC_SCALE);
         if (scale != null) scale.setBaseValue(1.0);
 
-        AttributeInstance maxHp = boss.getAttribute(Attribute.MAX_HEALTH);
+        AttributeInstance maxHp = boss.getAttribute(Attribute.GENERIC_MAX_HEALTH);
         if (maxHp != null) {
             maxHp.setBaseValue(20.0);
             if (boss.getHealth() > 20.0) boss.setHealth(20.0);
         }
 
-        AttributeInstance speed = boss.getAttribute(Attribute.MOVEMENT_SPEED);
+        AttributeInstance speed = boss.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED);
         if (speed != null) speed.removeModifier(SPEED_MOD_KEY);
 
         boss.removePotionEffect(PotionEffectType.RESISTANCE);

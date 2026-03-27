@@ -56,6 +56,10 @@ import java.util.*;
  * {@code PlayerList.placeNewPlayer} path, so entity tracking (spawn packets, equipment,
  * rotation) works automatically.
  *
+ * <p>The entity is added to the world via a direct {@code ServerLevel.addNewPlayer} call
+ * (bypassing {@code PlayerList.placeNewPlayer}) to avoid the protocol-direction validation
+ * that would reject a fake connection.  Skin packets are broadcast manually.
+ *
  * <p>Skin data is stored in {@code skins.yml} as Base64 texture value + Mojang signature.
  */
 public class NpcManager {
@@ -317,8 +321,33 @@ public class NpcManager {
         // Attach fake listener (constructor also sets npc.connection = this)
         new FakePacketListener(nmsServer, fakeConn, npc, cookie);
 
-        // Add to world via the official player-join path
-        nmsServer.getPlayerList().placeNewPlayer(fakeConn, npc, cookie);
+        // Bypass placeNewPlayer entirely: it calls setupInboundProtocol which validates
+        // the connection direction AND replaces our FakePacketListener with a real one.
+        // Instead, add the entity directly to the world level and broadcast skin info manually.
+        try {
+            java.lang.reflect.Method addNewPlayer =
+                    net.minecraft.server.level.ServerLevel.class
+                            .getDeclaredMethod("addNewPlayer", ServerPlayer.class);
+            addNewPlayer.setAccessible(true);
+            addNewPlayer.invoke(level, npc);
+        } catch (java.lang.reflect.InvocationTargetException ite) {
+            throw new RuntimeException("Failed to add NPC to world", ite.getCause() != null ? ite.getCause() : ite);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to add NPC to world", e);
+        }
+
+        // Broadcast PlayerInfo (skin) to all currently online real players so their client
+        // loads the NPC skin before receiving the spawn packet.
+        var infoPacket = ClientboundPlayerInfoUpdatePacket.createPlayerInitializing(List.of(npc));
+        for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
+            if (!npcUuids.contains(onlinePlayer.getUniqueId())) {
+                ((CraftPlayer) onlinePlayer).getHandle().connection.send(infoPacket);
+            }
+        }
+        // Remove from tab list 2 s later (skin already cached by client)
+        final UUID npcUuid = npc.getUUID();
+        plugin.getServer().getScheduler().runTaskLater(plugin, () ->
+                removeNpcFromTabList(npcUuid), 40L);
 
         activeNpcs.put(data.getId(), npc);
         entityIdMap.put(npc.getId(), data.getId());
@@ -357,13 +386,10 @@ public class NpcManager {
             removeHideTeamEntry(profileName);
         }
 
-        // Remove the entity from the world cleanly
-        try {
-            ((CraftServer) Bukkit.getServer()).getServer()
-                    .getPlayerList().remove(npc);
-        } catch (Exception e) {
-            npc.remove(net.minecraft.world.entity.Entity.RemovalReason.DISCARDED);
-        }
+        // Remove the entity from the world cleanly.
+        // We never went through placeNewPlayer so we must not call playerList.remove().
+        // Discard the entity directly; ServerLevel will handle entity tracking cleanup.
+        npc.remove(net.minecraft.world.entity.Entity.RemovalReason.DISCARDED);
     }
 
     /** Despawns all NPC entities (called on plugin disable). */
@@ -375,30 +401,29 @@ public class NpcManager {
 
     private static Connection buildFakeConnection() {
         try {
-            // Enumerate Connection's declared constructors and call the first one
-            // whose parameters we can satisfy. Getting PacketFlow from the constructor's
-            // own parameter type avoids classloader mismatch (Class.forName would return
-            // a different Class object than the one Connection expects).
+            // Find the Connection(PacketFlow) constructor and invoke it with SERVERBOUND.
+            // We use name() (canonical enum identifier) rather than toString() which can be
+            // overridden. We deliberately skip no-arg constructors so the direction is always
+            // explicitly SERVERBOUND — required by Connection.validateListener().
             Connection conn = null;
             for (java.lang.reflect.Constructor<?> ctor : Connection.class.getDeclaredConstructors()) {
                 ctor.setAccessible(true);
                 Class<?>[] params = ctor.getParameterTypes();
-                try {
-                    if (params.length == 0) {
-                        conn = (Connection) ctor.newInstance();
-                    } else if (params.length == 1 && params[0].isEnum()) {
-                        // Single enum param → PacketFlow; server-side connections are SERVERBOUND
-                        // (the server *receives* packets from the client direction)
-                        Object serverbound = null;
-                        for (Object ec : params[0].getEnumConstants()) {
-                            if (ec.toString().equals("SERVERBOUND")) { serverbound = ec; break; }
+                if (params.length == 1 && params[0].isEnum()) {
+                    Object serverbound = null;
+                    for (Object ec : params[0].getEnumConstants()) {
+                        if (((Enum<?>) ec).name().equals("SERVERBOUND")) {
+                            serverbound = ec;
+                            break;
                         }
-                        if (serverbound != null) conn = (Connection) ctor.newInstance(serverbound);
                     }
-                    if (conn != null) break;
-                } catch (Exception ignored) {}
+                    if (serverbound != null) {
+                        conn = (Connection) ctor.newInstance(serverbound);
+                        break;
+                    }
+                }
             }
-            if (conn == null) throw new IllegalStateException("No suitable Connection constructor found");
+            if (conn == null) throw new IllegalStateException("Cannot find Connection(PacketFlow) constructor");
 
             // Inject an EmbeddedChannel so Connection thinks it's connected
             Field chField = Connection.class.getDeclaredField("channel");
