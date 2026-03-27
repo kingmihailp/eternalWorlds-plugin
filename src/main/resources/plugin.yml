@@ -16,6 +16,22 @@ commands:
     description: View your statistics for a counter
     usage: /stats <counter-name>
     permission: eternalworlds.stats.use
+  spawnnpc:
+    description: Spawn a player-model NPC at your location
+    usage: /spawnnpc <id>
+    permission: eternalworlds.npc.admin
+  removenpc:
+    description: Remove a player-model NPC
+    usage: /removenpc <id>
+    permission: eternalworlds.npc.admin
+  npcattributes:
+    description: Configure NPC attributes (name, skin, command, look-at-nearest)
+    usage: /npcattributes <id> <attribute> <value>
+    permission: eternalworlds.npc.admin
+  setnpcitems:
+    description: Set NPC equipment from your main hand
+    usage: /setnpcitems <id> <slot>
+    permission: eternalworlds.npc.admin
 
 permissions:
   eternalworlds.portal.admin:
@@ -27,3 +43,6 @@ permissions:
   eternalworlds.stats.use:
     description: Ability to view personal statistics
     default: true
+  eternalworlds.npc.admin:
+    description: Full access to NPC management (spawn, remove, configure)
+    default: op

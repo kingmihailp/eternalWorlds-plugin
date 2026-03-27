@@ -28,6 +28,13 @@
             <version>1.21.1-R0.1-SNAPSHOT</version>
             <scope>provided</scope>
         </dependency>
+        <!-- NMS access for player-model NPCs (Mojang-mapped) -->
+        <dependency>
+            <groupId>io.papermc.paper</groupId>
+            <artifactId>paper-mojangapi</artifactId>
+            <version>1.21.1-R0.1-SNAPSHOT</version>
+            <scope>provided</scope>
+        </dependency>
     </dependencies>
 
     <build>
