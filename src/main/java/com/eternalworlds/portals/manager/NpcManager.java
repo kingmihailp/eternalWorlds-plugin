@@ -387,12 +387,13 @@ public class NpcManager {
                     if (params.length == 0) {
                         conn = (Connection) ctor.newInstance();
                     } else if (params.length == 1 && params[0].isEnum()) {
-                        // Single enum param → PacketFlow; find the CLIENTBOUND constant
-                        Object clientbound = null;
+                        // Single enum param → PacketFlow; server-side connections are SERVERBOUND
+                        // (the server *receives* packets from the client direction)
+                        Object serverbound = null;
                         for (Object ec : params[0].getEnumConstants()) {
-                            if (ec.toString().equals("CLIENTBOUND")) { clientbound = ec; break; }
+                            if (ec.toString().equals("SERVERBOUND")) { serverbound = ec; break; }
                         }
-                        if (clientbound != null) conn = (Connection) ctor.newInstance(clientbound);
+                        if (serverbound != null) conn = (Connection) ctor.newInstance(serverbound);
                     }
                     if (conn != null) break;
                 } catch (Exception ignored) {}
