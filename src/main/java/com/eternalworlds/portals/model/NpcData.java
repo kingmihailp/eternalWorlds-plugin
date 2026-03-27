@@ -72,6 +72,11 @@ public class NpcData {
     public void setClickCommand(String v)   { this.clickCommand = v; }
     public void setLookAtNearest(boolean v) { this.lookAtNearest = v; }
     public void setPose(String v)           { this.pose = v; }
+    public void setWorldName(String v)      { this.worldName = v; }
+    public void setX(double v)              { this.x = v; }
+    public void setY(double v)              { this.y = v; }
+    public void setZ(double v)              { this.z = v; }
+    public void setYaw(float v)             { this.yaw = v; }
 
     public void setEquipmentSlot(String slot, ItemStack item) {
         if (item == null || item.getType().isAir()) equipment.remove(slot);

@@ -11,13 +11,16 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import net.minecraft.network.Connection;
 import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.game.ClientboundAddEntityPacket;
 import net.minecraft.network.protocol.game.ClientboundMoveEntityPacket;
 import net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket;
+import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.world.entity.Pose;
 import net.minecraft.network.protocol.game.ClientboundPlayerInfoRemovePacket;
 import net.minecraft.network.protocol.game.ClientboundPlayerInfoUpdatePacket;
 import net.minecraft.network.protocol.game.ClientboundRotateHeadPacket;
 import net.minecraft.network.protocol.game.ClientboundSetEquipmentPacket;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ClientInformation;
 import net.minecraft.server.level.ServerLevel;
@@ -135,18 +138,22 @@ public class NpcManager {
 
     private void loadSkins() {
         if (!skinsFile.exists()) {
-            // Create an empty template so admins know the file location and format
-            YamlConfiguration empty = new YamlConfiguration();
-            empty.options().setHeader(List.of(
-                    "skins.yml — NPC skin library",
-                    "Add skins via:  /npc addskin <name> <base64value> <signature>",
-                    "Or manually:",
-                    "skins:",
-                    "  example:",
-                    "    value: <base64 texture value from mineskin.org>",
-                    "    signature: <mojang signature>"
-            ));
-            trySave(empty, skinsFile);
+            skinsFile.getParentFile().mkdirs();
+            try {
+                java.nio.file.Files.writeString(skinsFile.toPath(),
+                        "# skins.yml - NPC skin library\n" +
+                        "# Add skins in-game:  /npc addskin <name> <base64value> <signature>\n" +
+                        "# Get value+signature from https://mineskin.org\n" +
+                        "#\n" +
+                        "# Manual format:\n" +
+                        "# skins:\n" +
+                        "#   myskin:\n" +
+                        "#     value: <base64 texture value>\n" +
+                        "#     signature: <mojang signature>\n" +
+                        "skins: {}\n");
+            } catch (IOException e) {
+                plugin.getLogger().warning("[NPC] Failed to create skins.yml: " + e.getMessage());
+            }
             return;
         }
         YamlConfiguration cfg = YamlConfiguration.loadConfiguration(skinsFile);
@@ -344,17 +351,6 @@ public class NpcManager {
         // Attach fake listener (constructor also sets npc.connection = this)
         new FakePacketListener(nmsServer, fakeConn, npc, cookie);
 
-        // Send PlayerInfo (skin/profile) to all online real players BEFORE adding the entity
-        // to the world. The entity tracker sends the spawn packet as soon as the NPC enters a
-        // player's view range; if PlayerInfo hasn't arrived first the client has no profile to
-        // render and shows nothing (invisible NPC).
-        var infoPacket = ClientboundPlayerInfoUpdatePacket.createPlayerInitializing(List.of(npc));
-        for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
-            if (!npcUuids.contains(onlinePlayer.getUniqueId())) {
-                ((CraftPlayer) onlinePlayer).getHandle().connection.send(infoPacket);
-            }
-        }
-
         // Bypass placeNewPlayer entirely: it calls setupInboundProtocol which validates
         // the connection direction AND replaces our FakePacketListener with a real one.
         // Add the entity directly to the world level instead.
@@ -370,10 +366,23 @@ public class NpcManager {
             throw new RuntimeException("Failed to add NPC to world", e);
         }
 
-        // Remove from tab list 2 s later (skin already cached by client)
-        final UUID npcUuid = npc.getUUID();
-        plugin.getServer().getScheduler().runTaskLater(plugin, () ->
-                removeNpcFromTabList(npcUuid), 40L);
+        // Entity tracking for fake ServerPlayer entities does not reliably send spawn packets
+        // to online clients. Broadcast all required packets manually after a short delay so
+        // the entity is fully initialized before we send.
+        final String npcId = data.getId();
+        final UUID   npcUuid = npc.getUUID();
+        plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+            ServerPlayer live = activeNpcs.get(npcId);
+            if (live == null) return;
+            for (Player p : Bukkit.getOnlinePlayers()) {
+                if (!npcUuids.contains(p.getUniqueId())) {
+                    broadcastNpcSpawnToPlayer(live, p);
+                }
+            }
+            // Remove NPC from tab list once clients have cached the skin
+            plugin.getServer().getScheduler().runTaskLater(plugin, () ->
+                    removeNpcFromTabList(npcUuid), 40L);
+        }, 3L);
 
         activeNpcs.put(data.getId(), npc);
         entityIdMap.put(npc.getId(), data.getId());
@@ -476,15 +485,17 @@ public class NpcManager {
         if (activeNpcs.isEmpty()) return;
         plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
             if (!player.isOnline()) return;
-            var nmsPlayer = ((CraftPlayer) player).getHandle();
-            // Send skin info for all NPCs
-            var infoPacket = ClientboundPlayerInfoUpdatePacket
-                    .createPlayerInitializing(new ArrayList<>(activeNpcs.values()));
-            nmsPlayer.connection.send(infoPacket);
-            // Remove from tab list shortly after (skin is already cached by client)
+            // Send PlayerInfo + full spawn packets for every active NPC so the joining
+            // player can see them all.
+            for (ServerPlayer npc : new ArrayList<>(activeNpcs.values())) {
+                broadcastNpcSpawnToPlayer(npc, player);
+            }
+            // Remove NPCs from tab list shortly after (skins already cached)
             plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+                if (!player.isOnline()) return;
                 List<UUID> uuids = activeNpcs.values().stream().map(ServerPlayer::getUUID).toList();
-                nmsPlayer.connection.send(new ClientboundPlayerInfoRemovePacket(uuids));
+                ((CraftPlayer) player).getHandle().connection
+                        .send(new ClientboundPlayerInfoRemovePacket(uuids));
             }, 40L);
         }, 10L);
     }
@@ -505,6 +516,62 @@ public class NpcManager {
                 ((CraftPlayer) p).getHandle().connection.send(packet);
             }
         }
+    }
+
+    /**
+     * Sends all packets required for one online player to see the given NPC:
+     * PlayerInfo (skin), AddEntity, EntityData, head rotation, and equipment.
+     * PlayerInfo must arrive at the client before AddEntity or the skin won't render.
+     */
+    private void broadcastNpcSpawnToPlayer(ServerPlayer npc, Player target) {
+        var conn = ((CraftPlayer) target).getHandle().connection;
+        // 1. Profile / skin — must arrive before the spawn packet
+        conn.send(ClientboundPlayerInfoUpdatePacket.createPlayerInitializing(List.of(npc)));
+        // 2. Spawn entity
+        conn.send(new ClientboundAddEntityPacket(
+                npc.getId(), npc.getUUID(),
+                npc.getX(), npc.getY(), npc.getZ(),
+                npc.getXRot(), npc.getYRot(),
+                npc.getType(), 0,
+                Vec3.ZERO,
+                (double) npc.getYHeadRot()));
+        // 3. Entity data (skin layer bits, pose flags, etc.)
+        List<SynchedEntityData.DataValue<?>> dataValues = npc.getEntityData().packAll();
+        if (dataValues != null && !dataValues.isEmpty()) {
+            conn.send(new ClientboundSetEntityDataPacket(npc.getId(), dataValues));
+        }
+        // 4. Head yaw (so NPC faces the correct direction)
+        conn.send(new ClientboundRotateHeadPacket(npc,
+                (byte) (npc.getYHeadRot() * 256.0F / 360.0F)));
+        // 5. Equipment
+        List<Pair<EquipmentSlot, net.minecraft.world.item.ItemStack>> equip = new ArrayList<>();
+        for (EquipmentSlot slot : EquipmentSlot.values()) {
+            net.minecraft.world.item.ItemStack item = npc.getItemBySlot(slot);
+            if (!item.isEmpty()) equip.add(Pair.of(slot, item));
+        }
+        if (!equip.isEmpty()) {
+            conn.send(new ClientboundSetEquipmentPacket(npc.getId(), equip));
+        }
+    }
+
+    /**
+     * Moves NPC {@code id} to {@code loc}: updates persisted data, despawns
+     * the old entity, and spawns a new one at the new position.
+     *
+     * @return false if no NPC with that id exists
+     */
+    public boolean moveNpcHere(String id, Location loc) {
+        NpcData data = npcs.get(id.toLowerCase());
+        if (data == null) return false;
+        data.setWorldName(loc.getWorld().getName());
+        data.setX(loc.getX());
+        data.setY(loc.getY());
+        data.setZ(loc.getZ());
+        data.setYaw(loc.getYaw());
+        save();
+        despawnEntity(id);
+        spawnEntity(data);
+        return true;
     }
 
     // ── Name display ──────────────────────────────────────────────────────────

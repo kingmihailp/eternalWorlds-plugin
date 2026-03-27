@@ -63,6 +63,7 @@ public class NpcCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage("§e/npc setpose <id> <standing|crouching|sitting> §7– Set NPC pose");
             sender.sendMessage("§e/npc addskin <name> <value> <signature> §7– Add skin from mineskin.org");
             sender.sendMessage("§e/npc removeskin <name> §7– Remove skin entry");
+            sender.sendMessage("§e/npc movehere <id> §7– Move NPC to your current position");
             return true;
         }
         return switch (args[0].toLowerCase()) {
@@ -76,9 +77,10 @@ public class NpcCommand implements CommandExecutor, TabCompleter {
             case "setpose"    -> cmdNpcSetPose(sender, Arrays.copyOfRange(args, 1, args.length));
             case "addskin"    -> cmdNpcAddSkin(sender, Arrays.copyOfRange(args, 1, args.length));
             case "removeskin" -> cmdNpcRemoveSkin(sender, Arrays.copyOfRange(args, 1, args.length));
+            case "movehere"   -> cmdNpcMoveHere(sender, Arrays.copyOfRange(args, 1, args.length));
             default -> {
                 sender.sendMessage("§cUnknown subcommand §e" + args[0]
-                        + "§c. Valid: reload, setpose, addskin, removeskin.");
+                        + "§c. Valid: reload, setpose, addskin, removeskin, movehere.");
                 yield true;
             }
         };
@@ -97,6 +99,25 @@ public class NpcCommand implements CommandExecutor, TabCompleter {
         plugin.getNpcManager().addSkin(name, value, signature);
         sender.sendMessage("§a[NPC] Skin §e" + name + "§a saved to §fskins.yml§a.");
         sender.sendMessage("§7Apply with: §f/npcattributes <npcId> skin " + name);
+        return true;
+    }
+
+    // /npc movehere <id>
+    private boolean cmdNpcMoveHere(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage("§cOnly players can use this command.");
+            return true;
+        }
+        if (args.length < 1) {
+            sender.sendMessage("§cUsage: /npc movehere <id>");
+            return true;
+        }
+        String id = args[0].toLowerCase();
+        if (!plugin.getNpcManager().moveNpcHere(id, player.getLocation())) {
+            sender.sendMessage("§cNPC §e" + id + " §cnot found.");
+            return true;
+        }
+        sender.sendMessage("§a[NPC] Moved §e" + id + "§a to your position.");
         return true;
     }
 
@@ -277,10 +298,10 @@ public class NpcCommand implements CommandExecutor, TabCompleter {
             case "npc" -> {
                 if (args.length == 1) {
                     StringUtil.copyPartialMatches(args[0],
-                            List.of("reload", "setpose", "addskin", "removeskin"), completions);
+                            List.of("reload", "setpose", "addskin", "removeskin", "movehere"), completions);
                 } else if (args.length == 2) {
                     String sub = args[0].toLowerCase();
-                    if (sub.equals("setpose")) {
+                    if (sub.equals("setpose") || sub.equals("movehere")) {
                         List<String> npcIds2 = plugin.getNpcManager().getAllNpcs()
                                 .stream().map(NpcData::getId).toList();
                         StringUtil.copyPartialMatches(args[1], npcIds2, completions);
