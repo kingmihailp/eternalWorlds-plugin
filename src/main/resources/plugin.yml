@@ -1,5 +1,5 @@
 name: EternalWorldsPortals
-version: '${project.version}'
+version: '${version}'
 main: com.eternalworlds.portals.EternalWorldsPlugin
 api-version: '1.21'
 description: Custom portal system for server administrators
