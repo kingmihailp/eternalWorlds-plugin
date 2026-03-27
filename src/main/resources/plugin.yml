@@ -16,6 +16,10 @@ commands:
     description: View your statistics for a counter
     usage: /stats <counter-name>
     permission: eternalworlds.stats.use
+  npc:
+    description: NPC management (reload, etc.)
+    usage: /npc <subcommand>
+    permission: eternalworlds.npc.admin
   spawnnpc:
     description: Spawn a player-model NPC at your location
     usage: /spawnnpc <id>

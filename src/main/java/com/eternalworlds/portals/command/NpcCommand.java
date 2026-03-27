@@ -50,7 +50,30 @@ public class NpcCommand implements CommandExecutor, TabCompleter {
             case "removenpc"      -> cmdRemoveNpc(sender, args);
             case "npcattributes"  -> cmdNpcAttributes(sender, args);
             case "setnpcitems"    -> cmdSetNpcItems(sender, args);
+            case "npc"            -> cmdNpc(sender, args);
             default -> false;
+        };
+    }
+
+    // /npc <subcommand>
+    private boolean cmdNpc(CommandSender sender, String[] args) {
+        if (args.length < 1) {
+            sender.sendMessage("§6=== EternalWorlds NPC ===");
+            sender.sendMessage("§e/npc reload §7– Reload npcs.yml and skins.yml without restart");
+            return true;
+        }
+        return switch (args[0].toLowerCase()) {
+            case "reload" -> {
+                sender.sendMessage("§e[NPC] Reloading NPC configuration...");
+                plugin.getNpcManager().reload();
+                int count = plugin.getNpcManager().getAllNpcs().size();
+                sender.sendMessage("§a[NPC] Reloaded §e" + count + "§a NPC(s) from disk.");
+                yield true;
+            }
+            default -> {
+                sender.sendMessage("§cUnknown subcommand §e" + args[0] + "§c. Use §f/npc reload§c.");
+                yield true;
+            }
         };
     }
 
@@ -190,6 +213,10 @@ public class NpcCommand implements CommandExecutor, TabCompleter {
                 .stream().map(NpcData::getId).toList();
 
         switch (command.getName().toLowerCase()) {
+            case "npc" -> {
+                if (args.length == 1)
+                    StringUtil.copyPartialMatches(args[0], List.of("reload"), completions);
+            }
             case "removenpc" -> {
                 if (args.length == 1) StringUtil.copyPartialMatches(args[0], npcIds, completions);
             }

@@ -69,7 +69,7 @@ public final class EternalWorldsPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new NpcListener(this), this);
 
         NpcCommand npcExecutor = new NpcCommand(this);
-        for (String cmd : new String[]{"spawnnpc", "removenpc", "npcattributes", "setnpcitems"}) {
+        for (String cmd : new String[]{"npc", "spawnnpc", "removenpc", "npcattributes", "setnpcitems"}) {
             var c = getCommand(cmd);
             if (c != null) { c.setExecutor(npcExecutor); c.setTabCompleter(npcExecutor); }
         }

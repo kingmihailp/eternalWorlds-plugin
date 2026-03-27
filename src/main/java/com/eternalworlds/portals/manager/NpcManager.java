@@ -252,6 +252,23 @@ public class NpcManager {
     public Map<String, SkinEntry>     getSkins()          { return skins; }
     public boolean                    isNpcUuid(UUID uuid) { return npcUuids.contains(uuid); }
 
+    /**
+     * Despawns all active NPC entities, clears in-memory state, then reloads
+     * both {@code npcs.yml} and {@code skins.yml} and re-spawns every NPC.
+     */
+    public void reload() {
+        // 1. Despawn every live entity
+        despawnAll();
+
+        // 2. Clear in-memory state (despawnAll already cleared activeNpcs/nameDisplays/entityIdMap)
+        npcs.clear();
+        skins.clear();
+        npcUuids.clear();
+
+        // 3. Reload from disk and re-spawn
+        load();
+    }
+
     // ── Spawning ──────────────────────────────────────────────────────────────
 
     private void spawnAllEntities() {
