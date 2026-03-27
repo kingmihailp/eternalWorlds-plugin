@@ -56,7 +56,7 @@ public class WorldConfigManager {
     private final Map<String, EliminationConfig> worldElimination     = new HashMap<>();
     /**
      * world name (lower-case) -> cleaning enabled.
-     * When true, the world is cleaned (entities + blocks within 800 blocks of origin)
+     * When true, the world is cleaned (entities + blocks within 1000 blocks of origin)
      * at the moment winners are teleported out by the portal scheduler.
      */
     private final Map<String, Boolean>           worldCleaning        = new HashMap<>();

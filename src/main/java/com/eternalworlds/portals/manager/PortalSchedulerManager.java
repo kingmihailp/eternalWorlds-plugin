@@ -44,7 +44,7 @@ public class PortalSchedulerManager {
     private static final long END_GRACE_TICKS = 60L; // 3 seconds
 
     /** Radius (blocks from world origin) to clean. */
-    private static final int CLEAN_RADIUS = 800;
+    private static final int CLEAN_RADIUS = 1000;
     /** Chunks processed per tick during world cleaning. */
     private static final int CHUNKS_PER_TICK = 3;
 

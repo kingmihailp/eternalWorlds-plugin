@@ -653,7 +653,7 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
     private boolean cmdSetCleaningWorld(CommandSender sender, String[] args) {
         if (args.length < 3) {
             sender.sendMessage("§cUsage: /portal setcleaningworld <worldName> <true|false>");
-            sender.sendMessage("§7When true, the world is cleaned (entities + blocks within 800 blocks)");
+            sender.sendMessage("§7When true, the world is cleaned (entities + blocks within 1000 blocks)");
             sender.sendMessage("§7at the moment winners are teleported out.");
             return true;
         }
@@ -995,7 +995,7 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("§e/portal seteliminationylevel <world> <y> <targetWorld> §7– Teleport players below Y to another world");
         sender.sendMessage("§e/portal setwinnersdest <portal> <world> §7– Set world where players are sent after the game ends");
         sender.sendMessage("§e/portal setmessage <portal> <open|close|end> <msg> §7– Set a portal message (hex: &#RRGGBB, {portal}, {world})");
-        sender.sendMessage("§e/portal setcleaningworld <world> <true|false> §7– Clean a world (entities+blocks, r=800) when game ends");
+        sender.sendMessage("§e/portal setcleaningworld <world> <true|false> §7– Clean a world (entities+blocks, r=1000) when game ends");
         sender.sendMessage("§e/portal setcleaningminy <world> <y|reset> §7– Set minimum Y for cleaning (blocks below this Y are never removed)");
         sender.sendMessage("§e/portal setworldleavable <sourceWorld> <targetWorld> §7– Teleport players to targetWorld whenever they leave sourceWorld");
         sender.sendMessage("§e/portal setportaldynamicdelay <portal> <cdSec> <gameSec> <winnersWorld> §7– Save dynamic delay config (does not start cycle)");
