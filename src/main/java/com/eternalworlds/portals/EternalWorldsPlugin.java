@@ -3,10 +3,12 @@ package com.eternalworlds.portals;
 import com.eternalworlds.portals.command.NpcCommand;
 import com.eternalworlds.portals.command.PortalCommand;
 import com.eternalworlds.portals.command.StatsCommand;
+import com.eternalworlds.portals.listener.BossListener;
 import com.eternalworlds.portals.listener.NpcListener;
 import com.eternalworlds.portals.listener.PortalListener;
 import com.eternalworlds.portals.listener.ProjectilesListener;
 import com.eternalworlds.portals.listener.StatisticsListener;
+import com.eternalworlds.portals.manager.BossManager;
 import com.eternalworlds.portals.manager.DynamicDelayManager;
 import com.eternalworlds.portals.manager.ItemRandomizationManager;
 import com.eternalworlds.portals.manager.MinigameConfigManager;
@@ -35,6 +37,7 @@ public final class EternalWorldsPlugin extends JavaPlugin {
     private PlayerFreezeManager      playerFreezeManager;
     private StatisticsManager        statisticsManager;
     private NpcManager               npcManager;
+    private BossManager              bossManager;
 
     @Override
     public void onEnable() {
@@ -54,6 +57,7 @@ public final class EternalWorldsPlugin extends JavaPlugin {
         statisticsManager.load();
         this.npcManager                = new NpcManager(this);
         npcManager.load();
+        this.bossManager               = new BossManager(this);
         portalManager.loadPortals();
         // Restore portal cycles that were active before the last shutdown
         portalSchedulerManager.loadAndRestartCycles();
@@ -69,6 +73,7 @@ public final class EternalWorldsPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new StatisticsListener(this), this);
         getServer().getPluginManager().registerEvents(new NpcListener(this), this);
         getServer().getPluginManager().registerEvents(new ProjectilesListener(this), this);
+        getServer().getPluginManager().registerEvents(new BossListener(this), this);
 
         NpcCommand npcExecutor = new NpcCommand(this);
         for (String cmd : new String[]{"npc", "spawnnpc", "removenpc", "npcattributes", "setnpcitems"}) {
@@ -112,4 +117,5 @@ public final class EternalWorldsPlugin extends JavaPlugin {
     public PlayerFreezeManager       getPlayerFreezeManager()       { return playerFreezeManager; }
     public StatisticsManager         getStatisticsManager()         { return statisticsManager; }
     public NpcManager                getNpcManager()                { return npcManager; }
+    public BossManager               getBossManager()               { return bossManager; }
 }

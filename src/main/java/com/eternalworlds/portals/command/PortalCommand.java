@@ -36,7 +36,8 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             "setbuildingheightperworld", "allowbedsleeping",
             "setcleaningminy",
             "createstatisticcounter", "removestatisticcounter", "setstatistictracking",
-            "allowprojectilesfeatures"
+            "allowprojectilesfeatures",
+            "applyboss"
     );
 
     private static final List<String> STAT_METRICS = Arrays.asList(
@@ -112,6 +113,7 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             case "removestatisticcounter"   -> cmdRemoveStatisticCounter(sender, args);
             case "setstatistictracking"     -> cmdSetStatisticTracking(sender, args);
             case "allowprojectilesfeatures" -> cmdAllowProjectilesFeatures(sender, args);
+            case "applyboss"                -> cmdApplyBoss(sender, args);
             default                         -> { sendHelp(sender); yield true; }
         };
     }
@@ -872,6 +874,55 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
+    // /portal applyboss <game|stop|setboss> ...
+    private boolean cmdApplyBoss(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            sender.sendMessage("§cUsage: /portal applyboss <game|stop|setboss> [args...]");
+            return true;
+        }
+        switch (args[1].toLowerCase()) {
+            case "game" -> {
+                if (args.length < 4) {
+                    sender.sendMessage("§cUsage: /portal applyboss game <world> <winnersWorld>");
+                    return true;
+                }
+                String bossName = plugin.getBossManager().getBossPlayerName();
+                if (bossName == null || bossName.isBlank()) {
+                    sender.sendMessage("§cNo boss player configured. Use §f/portal applyboss setboss <name>§c first.");
+                    return true;
+                }
+                boolean started = plugin.getBossManager().startGame(args[2], args[3]);
+                if (!started) {
+                    sender.sendMessage("§cFailed to start boss game. Is a boss player configured in boss.yml?");
+                } else {
+                    sender.sendMessage("§a[Boss] Game started in world §e" + args[2]
+                            + "§a. Boss: §e" + bossName
+                            + "§a. Winners → §e" + args[3]);
+                }
+            }
+            case "stop" -> {
+                if (args.length < 3) {
+                    sender.sendMessage("§cUsage: /portal applyboss stop <world>");
+                    return true;
+                }
+                boolean stopped = plugin.getBossManager().stopGame(args[2]);
+                sender.sendMessage(stopped
+                        ? "§a[Boss] Game in world §e" + args[2] + "§a stopped."
+                        : "§cNo active boss game in world §e" + args[2] + "§c.");
+            }
+            case "setboss" -> {
+                if (args.length < 3) {
+                    sender.sendMessage("§cUsage: /portal applyboss setboss <playerName>");
+                    return true;
+                }
+                plugin.getBossManager().setBossPlayer(args[2]);
+                sender.sendMessage("§a[Boss] Boss player set to §e" + args[2] + "§a in boss.yml.");
+            }
+            default -> sender.sendMessage("§cUnknown sub-command. Use: game | stop | setboss");
+        }
+        return true;
+    }
+
     // /portal allowbedsleeping <worldName> <true|false>
     private boolean cmdAllowBedSleeping(CommandSender sender, String[] args) {
         if (args.length < 3) {
@@ -1032,6 +1083,9 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("§e/portal removestatisticcounter <name> §7– Delete a statistics counter and its data");
         sender.sendMessage("§e/portal setstatistictracking <counter> <metric> <true|false> §7– Enable or disable a tracking metric (kills/deaths/wins/blocks-placed/damage-dealt)");
         sender.sendMessage("§e/portal allowprojectilesfeatures <world> <true|false> §7– Enable knockback for eggs/snowballs/fireballs and allow throwing fireballs with Fire Charge");
+        sender.sendMessage("§e/portal applyboss game <world> <winnersWorld> §7– Start boss fight in world (boss player set in boss.yml)");
+        sender.sendMessage("§e/portal applyboss stop <world> §7– Stop boss fight in world without teleporting");
+        sender.sendMessage("§e/portal applyboss setboss <playerName> §7– Set the boss player name in boss.yml");
         sender.sendMessage("§e/portal reload §7– Reload config and portals");
     }
 
@@ -1070,6 +1124,9 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
                     List<String> worlds = plugin.getWorldManager().listUnloadedWorlds();
                     StringUtil.copyPartialMatches(args[1], worlds, completions);
                 }
+                case "applyboss" ->
+                        StringUtil.copyPartialMatches(args[1],
+                                List.of("game", "stop", "setboss"), completions);
                 case "travel", "worldgamemode", "worldpvp", "worldclearinv",
                         "worlditemrandomization", "seteliminationylevel", "setcleaningworld",
                         "allownetherperworld", "allowendperworld",
@@ -1145,6 +1202,19 @@ public class PortalCommand implements CommandExecutor, TabCompleter {
             StringUtil.copyPartialMatches(args[2], BOOL_VALUES, completions);
         } else if (args.length == 3 && args[0].equalsIgnoreCase("allowprojectilesfeatures")) {
             StringUtil.copyPartialMatches(args[2], BOOL_VALUES, completions);
+        } else if (args.length == 3 && args[0].equalsIgnoreCase("applyboss")) {
+            // arg2 = world (for game/stop) or playerName (for setboss)
+            if (args[1].equalsIgnoreCase("game") || args[1].equalsIgnoreCase("stop")) {
+                List<String> allWorlds = new ArrayList<>(plugin.getWorldManager().listLoadedWorlds());
+                allWorlds.addAll(plugin.getWorldManager().listUnloadedWorlds());
+                StringUtil.copyPartialMatches(args[2], allWorlds, completions);
+            }
+        } else if (args.length == 4 && args[0].equalsIgnoreCase("applyboss")
+                && args[1].equalsIgnoreCase("game")) {
+            // arg3 = winners world
+            List<String> allWorlds = new ArrayList<>(plugin.getWorldManager().listLoadedWorlds());
+            allWorlds.addAll(plugin.getWorldManager().listUnloadedWorlds());
+            StringUtil.copyPartialMatches(args[3], allWorlds, completions);
         } else if (args.length == 3 && args[0].equalsIgnoreCase("setbuildingheightperworld")) {
             StringUtil.copyPartialMatches(args[2], List.of("remove"), completions);
         } else if (args.length == 3 && args[0].equalsIgnoreCase("setcleaningminy")) {
