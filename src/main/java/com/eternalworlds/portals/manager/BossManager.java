@@ -27,7 +27,7 @@ import java.util.UUID;
  * the Boss when entering a world where a game is active.  The Boss receives:
  * <ul>
  *   <li>3× entity scale</li>
- *   <li>100 HP (50 hearts) max health</li>
+ *   <li>1000 HP (500 hearts) max health</li>
  *   <li>Resistance II (infinite)</li>
  *   <li>Strength IV (infinite)</li>
  *   <li>−25 % movement speed (attribute modifier)</li>
@@ -152,11 +152,11 @@ public class BossManager {
         AttributeInstance scale = boss.getAttribute(Attribute.GENERIC_SCALE);
         if (scale != null) scale.setBaseValue(3.0);
 
-        // 100 HP max health (50 hearts)
+        // 1000 HP max health (500 hearts)
         AttributeInstance maxHp = boss.getAttribute(Attribute.GENERIC_MAX_HEALTH);
         if (maxHp != null) {
-            maxHp.setBaseValue(100.0);
-            boss.setHealth(100.0);
+            maxHp.setBaseValue(1000.0);
+            boss.setHealth(1000.0);
         }
 
         // −25 % movement speed
