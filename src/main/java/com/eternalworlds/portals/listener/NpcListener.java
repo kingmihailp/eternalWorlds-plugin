@@ -6,6 +6,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
@@ -71,5 +72,17 @@ public class NpcListener implements Listener {
         if (plugin.getNpcManager().isNpcPlayer(event.getPlayer())) {
             event.quitMessage(null);
         }
+    }
+
+    /**
+     * When a real player changes worlds, re-send spawn packets for any NPCs in
+     * the new world. Without this, entity tracking may have sent the NPC's
+     * AddEntity packet without PlayerInfo or correct metadata, leaving the NPC
+     * invisible or without its skin/pose after the world transition.
+     */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onWorldChange(PlayerChangedWorldEvent event) {
+        if (plugin.getNpcManager().isNpcPlayer(event.getPlayer())) return;
+        plugin.getNpcManager().onRealPlayerJoin(event.getPlayer());
     }
 }

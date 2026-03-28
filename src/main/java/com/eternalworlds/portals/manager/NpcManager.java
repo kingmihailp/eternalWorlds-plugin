@@ -13,7 +13,9 @@ import net.minecraft.network.Connection;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientboundAddEntityPacket;
 import net.minecraft.network.protocol.game.ClientboundMoveEntityPacket;
+import net.minecraft.network.protocol.game.ClientboundRemoveEntitiesPacket;
 import net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket;
+import net.minecraft.network.protocol.game.ClientboundSetPassengersPacket;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.world.entity.Pose;
 import net.minecraft.network.protocol.game.ClientboundPlayerInfoRemovePacket;
@@ -520,11 +522,26 @@ public class NpcManager {
 
     /**
      * Sends all packets required for one online player to see the given NPC:
-     * PlayerInfo (skin), AddEntity, EntityData, head rotation, and equipment.
-     * PlayerInfo must arrive at the client before AddEntity or the skin won't render.
+     * RemoveEntities (clear any stale entity-tracking copy), PlayerInfo (skin),
+     * AddEntity, EntityData, head rotation, equipment, and passenger link if sitting.
+     *
+     * <p>PlayerInfo MUST arrive before AddEntity or the client has no profile to
+     * render the skin. RemoveEntities MUST arrive first to avoid the client showing
+     * an entity-tracking copy without skin/pose (entity tracking does not send
+     * PlayerInfo and does not reliably include metadata for fake ServerPlayers).
+     *
+     * <p>Skips the NPC entirely if it lives in a different dimension from the player.
      */
     private void broadcastNpcSpawnToPlayer(ServerPlayer npc, Player target) {
-        var conn = ((CraftPlayer) target).getHandle().connection;
+        // Skip if the NPC is in a different world — sending cross-world entities
+        // causes ghost entries on the client.
+        var targetHandle = ((CraftPlayer) target).getHandle();
+        if (npc.level() != targetHandle.level()) return;
+
+        var conn = targetHandle.connection;
+
+        // 0. Remove any stale copy that entity tracking may have sent without PlayerInfo/pose
+        conn.send(new ClientboundRemoveEntitiesPacket(npc.getId()));
         // 1. Profile / skin — must arrive before the spawn packet
         conn.send(ClientboundPlayerInfoUpdatePacket.createPlayerInitializing(List.of(npc)));
         // 2. Spawn entity
@@ -551,6 +568,17 @@ public class NpcManager {
         }
         if (!equip.isEmpty()) {
             conn.send(new ClientboundSetEquipmentPacket(npc.getId(), equip));
+        }
+        // 6. Sitting pose: tell the client the NPC is a passenger of its seat entity.
+        //    The armor stand spawn (from normal entity tracking) may arrive later, so
+        //    schedule SetPassengers 2 ticks after our packets to guarantee ordering.
+        net.minecraft.world.entity.Entity vehicle = npc.getVehicle();
+        if (vehicle != null) {
+            plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+                if (!target.isOnline()) return;
+                ((CraftPlayer) target).getHandle().connection
+                        .send(new ClientboundSetPassengersPacket(vehicle));
+            }, 2L);
         }
     }
 
@@ -639,16 +667,22 @@ public class NpcManager {
     private void applyPose(NpcData data, ServerPlayer npc, World world) {
         switch (data.getPose()) {
             case "crouching" -> {
+                // setShiftKeyDown(true) makes isCrouching() return true so that
+                // ServerPlayer.updatePlayerPose() (called each entity tick) keeps
+                // setting CROUCHING instead of resetting it to STANDING.
+                npc.setShiftKeyDown(true);
                 npc.setPose(Pose.CROUCHING);
                 sendEntityMetadata(npc, world);
             }
             case "sitting" -> {
+                npc.setShiftKeyDown(false);
                 // Reset to standing first so the entity can be mounted
                 npc.setPose(Pose.STANDING);
                 sendEntityMetadata(npc, world);
                 spawnSeat(data, npc, world);
             }
             default -> { // "standing"
+                npc.setShiftKeyDown(false);
                 npc.setPose(Pose.STANDING);
                 sendEntityMetadata(npc, world);
             }
