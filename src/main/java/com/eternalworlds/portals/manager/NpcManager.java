@@ -162,8 +162,8 @@ public class NpcManager {
         ConfigurationSection sec = cfg.getConfigurationSection("skins");
         if (sec == null) return;
         for (String name : sec.getKeys(false)) {
-            String value = sec.getString("skins." + name + ".value");
-            String sig   = sec.getString("skins." + name + ".signature");
+            String value = sec.getString(name + ".value");
+            String sig   = sec.getString(name + ".signature");
             if (value != null && sig != null) skins.put(name, new SkinEntry(value, sig));
         }
     }
