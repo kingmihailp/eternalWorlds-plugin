@@ -368,9 +368,22 @@ public class NpcManager {
             throw new RuntimeException("Failed to add NPC to world", e);
         }
 
-        // Entity tracking for fake ServerPlayer entities does not reliably send spawn packets
-        // to online clients. Broadcast all required packets manually after a short delay so
-        // the entity is fully initialized before we send.
+        // Remove the NPC from ChunkMap's entity tracker immediately so entity tracking
+        // never sends uncontrolled AddEntity packets (without PlayerInfo/skin/pose) to clients.
+        // All NPC visibility is managed through manual sends in broadcastNpcSpawnToPlayer().
+        level.getChunkSource().chunkMap.entityMap.remove(npc.getId());
+
+        // Clean up any AddEntity packet entity tracking may have broadcast synchronously
+        // during addNewPlayer() before we removed the tracker entry.
+        var cleanupRemove = new ClientboundRemoveEntitiesPacket(npc.getId());
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            if (!npcUuids.contains(p.getUniqueId()))
+                ((CraftPlayer) p).getHandle().connection.send(cleanupRemove);
+        }
+
+        // For players already online: broadcast the full packet set after a short delay
+        // so the entity is fully initialised (pose, equipment) before we send.
+        // Players who join later or reload chunks are handled by PlayerChunkLoadEvent.
         final String npcId = data.getId();
         final UUID   npcUuid = npc.getUUID();
         plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
@@ -381,7 +394,6 @@ public class NpcManager {
                     broadcastNpcSpawnToPlayer(live, p);
                 }
             }
-            // Remove NPC from tab list once clients have cached the skin
             plugin.getServer().getScheduler().runTaskLater(plugin, () ->
                     removeNpcFromTabList(npcUuid), 40L);
         }, 3L);
@@ -483,23 +495,35 @@ public class NpcManager {
      * Called from NpcListener when any player joins.
      * Sends PlayerInfo (skin) packets for all active NPCs to the new player.
      */
+    /**
+     * Called when a real player joins or changes worlds.
+     * NPC spawning is primarily handled by {@link #onChunkLoad} (PlayerChunkLoadEvent).
+     * This method is kept as a lightweight hook for any future per-join logic.
+     */
     public void onRealPlayerJoin(Player player) {
+        // Intentionally empty: chunk-based spawn is handled in onChunkLoad().
+    }
+
+    /**
+     * Called from NpcListener when a player's client receives a chunk packet
+     * (PlayerChunkLoadEvent). If any NPC lives in that chunk we immediately send
+     * the full spawn packet set so the player sees the NPC with the correct skin
+     * and pose. Entity tracking is disabled for NPCs, so this is the sole
+     * mechanism that makes NPCs visible on chunk load / reconnect.
+     */
+    public void onChunkLoad(Player player, org.bukkit.Chunk chunk) {
         if (activeNpcs.isEmpty()) return;
-        plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
-            if (!player.isOnline()) return;
-            // Send PlayerInfo + full spawn packets for every active NPC so the joining
-            // player can see them all.
-            for (ServerPlayer npc : new ArrayList<>(activeNpcs.values())) {
-                broadcastNpcSpawnToPlayer(npc, player);
+        for (Map.Entry<String, ServerPlayer> entry : activeNpcs.entrySet()) {
+            NpcData data = npcs.get(entry.getKey());
+            if (data == null) continue;
+            if (!data.getWorldName().equals(chunk.getWorld().getName())) continue;
+            // Check whether the NPC is in this specific chunk
+            int npcChunkX = (int) Math.floor(data.getX()) >> 4;
+            int npcChunkZ = (int) Math.floor(data.getZ()) >> 4;
+            if (npcChunkX == chunk.getX() && npcChunkZ == chunk.getZ()) {
+                broadcastNpcSpawnToPlayer(entry.getValue(), player);
             }
-            // Remove NPCs from tab list shortly after (skins already cached)
-            plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
-                if (!player.isOnline()) return;
-                List<UUID> uuids = activeNpcs.values().stream().map(ServerPlayer::getUUID).toList();
-                ((CraftPlayer) player).getHandle().connection
-                        .send(new ClientboundPlayerInfoRemovePacket(uuids));
-            }, 40L);
-        }, 10L);
+        }
     }
 
     /**
@@ -540,9 +564,9 @@ public class NpcManager {
 
         var conn = targetHandle.connection;
 
-        // 0. Remove any stale copy that entity tracking may have sent without PlayerInfo/pose
-        conn.send(new ClientboundRemoveEntitiesPacket(npc.getId()));
         // 1. Profile / skin — must arrive before the spawn packet
+        // Entity tracking is disabled for this NPC (removed from ChunkMap.entityMap),
+        // so no stale AddEntity packet will race with our PlayerInfo.
         conn.send(ClientboundPlayerInfoUpdatePacket.createPlayerInitializing(List.of(npc)));
         // 2. Spawn entity
         conn.send(new ClientboundAddEntityPacket(
@@ -604,11 +628,21 @@ public class NpcManager {
 
     // ── Name display ──────────────────────────────────────────────────────────
 
+    /**
+     * Y offset for the name TextDisplay above the NPC's stored origin.
+     * When sitting the NPC is a passenger of a small armour stand and its model
+     * renders roughly 1.0 block higher than the stored Y, so we need a larger
+     * offset to keep the name visually above the head.
+     */
+    private static double nameDisplayYOffset(NpcData data) {
+        return "sitting".equals(data.getPose()) ? 3.05 : 2.15;
+    }
+
     private void spawnNameDisplay(NpcData data, World world) {
         TextDisplay old = nameDisplays.remove(data.getId());
         if (old != null && !old.isDead()) old.remove();
 
-        Location loc = new Location(world, data.getX(), data.getY() + 2.15, data.getZ());
+        Location loc = new Location(world, data.getX(), data.getY() + nameDisplayYOffset(data), data.getZ());
         TextDisplay display = (TextDisplay) world.spawnEntity(loc, EntityType.TEXT_DISPLAY);
         Component text = LegacyComponentSerializer.legacySection()
                 .deserialize(ColorUtil.parse(data.getDisplayName()));
@@ -655,6 +689,9 @@ public class NpcManager {
                 org.bukkit.entity.Entity oldSeat = seatEntities.remove(id.toLowerCase());
                 if (oldSeat != null && !oldSeat.isDead()) oldSeat.remove();
                 applyPose(data, npc, world);
+                // Re-position the name display: sitting raises the NPC visually so the
+                // offset must change to keep the name above the head.
+                if (data.getDisplayName() != null) spawnNameDisplay(data, world);
             }
         }
         return true;

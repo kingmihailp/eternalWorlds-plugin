@@ -2,6 +2,7 @@ package com.eternalworlds.portals.listener;
 
 import com.eternalworlds.portals.EternalWorldsPlugin;
 import com.eternalworlds.portals.model.NpcData;
+import io.papermc.paper.event.packet.PlayerChunkLoadEvent;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -75,11 +76,17 @@ public class NpcListener implements Listener {
     }
 
     /**
-     * When a real player changes worlds, re-send spawn packets for any NPCs in
-     * the new world. Without this, entity tracking may have sent the NPC's
-     * AddEntity packet without PlayerInfo or correct metadata, leaving the NPC
-     * invisible or without its skin/pose after the world transition.
+     * Fires when the server sends a chunk packet to a player's client.
+     * Entity tracking is disabled for NPCs (removed from ChunkMap.entityMap),
+     * so this is the primary hook for making NPCs visible: if the loaded chunk
+     * contains an NPC we send the full spawn packet set directly.
      */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onPlayerChunkLoad(PlayerChunkLoadEvent event) {
+        if (plugin.getNpcManager().isNpcPlayer(event.getPlayer())) return;
+        plugin.getNpcManager().onChunkLoad(event.getPlayer(), event.getChunk());
+    }
+
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onWorldChange(PlayerChangedWorldEvent event) {
         if (plugin.getNpcManager().isNpcPlayer(event.getPlayer())) return;
