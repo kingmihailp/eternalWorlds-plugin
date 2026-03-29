@@ -181,6 +181,13 @@ public class PortalListener implements Listener {
     public void onPlayerJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
         String targetWorld = pendingLeavableTp.remove(player.getUniqueId());
+        // If no pending teleport was recorded (e.g. the server restarted while the player
+        // was in a leavable world), fall back to checking the world they are currently in.
+        // Minecraft persists the player's last position, so they can rejoin directly inside
+        // a minigame world after a restart — the leavable config catches that case here.
+        if (targetWorld == null) {
+            targetWorld = plugin.getWorldConfigManager().getLeavable(player.getWorld().getName());
+        }
         if (targetWorld != null) {
             World dest = plugin.getWorldManager().loadWorld(targetWorld);
             if (dest != null) {

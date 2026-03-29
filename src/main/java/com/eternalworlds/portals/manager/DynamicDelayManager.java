@@ -357,11 +357,28 @@ public class DynamicDelayManager {
         return set != null && set.contains(uuid);
     }
 
-    /** Loads persisted config and restarts all portals that had active=true. */
+    /**
+     * Loads persisted config and restarts all portals that had active=true.
+     *
+     * If world-cleaning is configured for a portal's game world the world is
+     * cleaned before the waiting phase starts, so the next game never begins
+     * on a map that was left dirty by a shutdown mid-game or mid-clean.
+     */
     public void loadAndRestart() {
         load();
         configs.forEach((key, dc) -> {
-            if (dc.active()) startWaiting(key);
+            if (!dc.active()) return;
+            Portal portal = plugin.getPortalManager().getPortal(key);
+            String gameWorldName = portal != null ? portal.getDestinationWorld() : null;
+            if (gameWorldName != null
+                    && plugin.getWorldConfigManager().isCleaningEnabled(gameWorldName)) {
+                World gameWorld = plugin.getServer().getWorld(gameWorldName);
+                if (gameWorld != null) {
+                    plugin.getPortalSchedulerManager().cleanWorld(gameWorld, () -> startWaiting(key));
+                    return;
+                }
+            }
+            startWaiting(key);
         });
     }
 

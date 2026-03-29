@@ -110,6 +110,11 @@ public class PortalSchedulerManager {
     /**
      * Reads scheduler.yml and restarts all previously active cycles.
      * Called from EternalWorldsPlugin.onEnable() after portals are loaded.
+     *
+     * If world-cleaning is configured for a portal's destination world the world is
+     * cleaned first; the cycle starts only after cleaning completes.  This prevents
+     * a game from beginning on a map that was left dirty by a shutdown mid-game or
+     * mid-clean.
      */
     public void loadAndRestartCycles() {
         if (!schedulerFile.exists()) return;
@@ -129,6 +134,18 @@ public class PortalSchedulerManager {
             }
             plugin.getLogger().info("[Portals] Restoring cycle for portal '" + portalName
                     + "' (" + enableSec + "s open / " + disableSec + "s closed).");
+
+            String destWorld = portal.getDestinationWorld();
+            if (plugin.getWorldConfigManager().isCleaningEnabled(destWorld)) {
+                World gameWorld = plugin.getServer().getWorld(destWorld);
+                if (gameWorld != null) {
+                    final String pName = portalName;
+                    final int    eSec  = enableSec;
+                    final int    dSec  = disableSec;
+                    cleanWorld(gameWorld, () -> startCycle(pName, eSec, dSec));
+                    continue;
+                }
+            }
             startCycle(portalName, enableSec, disableSec);
         }
     }
@@ -227,6 +244,15 @@ public class PortalSchedulerManager {
      *      processed CHUNKS_PER_TICK chunks per tick to avoid server lag.
      */
     public void cleanWorld(World world) {
+        cleanWorld(world, null);
+    }
+
+    /**
+     * Same as {@link #cleanWorld(World)} but runs {@code onComplete} on the main thread
+     * once all chunks have been processed.  Pass {@code null} if no callback is needed.
+     * The callback is also invoked immediately when there are no loaded chunks to clean.
+     */
+    public void cleanWorld(World world, Runnable onComplete) {
         String worldKey = world.getName().toLowerCase();
 
         // Cancel any in-progress clean task for this world before starting a new one.
@@ -255,7 +281,11 @@ public class PortalSchedulerManager {
             }
         }
 
-        if (chunks.isEmpty()) return;
+        if (chunks.isEmpty()) {
+            // Nothing to clean — fire the callback immediately on the current (main) thread.
+            if (onComplete != null) onComplete.run();
+            return;
+        }
 
         AtomicInteger index = new AtomicInteger(0);
 
@@ -275,6 +305,8 @@ public class PortalSchedulerManager {
             if (index.get() >= chunks.size()) {
                 BukkitTask self = cleaningTasks.remove(worldKey);
                 if (self != null) self.cancel();
+                // Fire the callback now that all chunks have been processed.
+                if (onComplete != null) onComplete.run();
             }
         }, 1L, 1L);
 
