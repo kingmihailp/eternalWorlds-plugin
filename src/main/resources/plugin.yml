@@ -36,6 +36,10 @@ commands:
     description: Set NPC equipment from your main hand
     usage: /setnpcitems <id> <slot>
     permission: eternalworlds.npc.admin
+  modifiers:
+    description: Select a game modifier during the countdown phase of a dynamic-delay game
+    usage: /modifiers <name|list|clear>
+    permission: eternalworlds.portal.admin
 
 permissions:
   eternalworlds.portal.admin:

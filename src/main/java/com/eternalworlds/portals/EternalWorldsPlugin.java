@@ -1,5 +1,6 @@
 package com.eternalworlds.portals;
 
+import com.eternalworlds.portals.command.ModifiersCommand;
 import com.eternalworlds.portals.command.NpcCommand;
 import com.eternalworlds.portals.command.PortalCommand;
 import com.eternalworlds.portals.command.StatsCommand;
@@ -12,6 +13,7 @@ import com.eternalworlds.portals.manager.BossManager;
 import com.eternalworlds.portals.manager.DynamicDelayManager;
 import com.eternalworlds.portals.manager.ItemRandomizationManager;
 import com.eternalworlds.portals.manager.MinigameConfigManager;
+import com.eternalworlds.portals.manager.ModifierManager;
 import com.eternalworlds.portals.manager.NpcManager;
 import com.eternalworlds.portals.manager.PlayerFreezeManager;
 import com.eternalworlds.portals.manager.PortalManager;
@@ -32,6 +34,7 @@ public final class EternalWorldsPlugin extends JavaPlugin {
     private ItemRandomizationManager itemRandomizationManager;
     private RandomPointManager       randomPointManager;
     private MinigameConfigManager    minigameConfigManager;
+    private ModifierManager          modifierManager;
     private PortalSchedulerManager   portalSchedulerManager;
     private DynamicDelayManager      dynamicDelayManager;
     private PlayerFreezeManager      playerFreezeManager;
@@ -50,6 +53,7 @@ public final class EternalWorldsPlugin extends JavaPlugin {
         this.itemRandomizationManager  = new ItemRandomizationManager(this);
         this.randomPointManager        = new RandomPointManager(this);
         this.minigameConfigManager     = new MinigameConfigManager(this);
+        this.modifierManager           = new ModifierManager(this);
         this.portalSchedulerManager    = new PortalSchedulerManager(this);
         this.playerFreezeManager       = new PlayerFreezeManager();
         this.dynamicDelayManager       = new DynamicDelayManager(this);
@@ -82,6 +86,10 @@ public final class EternalWorldsPlugin extends JavaPlugin {
         }
         npcManager.startScheduler();
 
+        ModifiersCommand modifiersExecutor = new ModifiersCommand(this);
+        var modCmd = getCommand("modifiers");
+        if (modCmd != null) { modCmd.setExecutor(modifiersExecutor); modCmd.setTabCompleter(modifiersExecutor); }
+
         StatsCommand statsExecutor = new StatsCommand(this);
         var statsCmd = getCommand("stats");
         statsCmd.setExecutor(statsExecutor);
@@ -112,6 +120,7 @@ public final class EternalWorldsPlugin extends JavaPlugin {
     public ItemRandomizationManager  getItemRandomizationManager()  { return itemRandomizationManager; }
     public RandomPointManager        getRandomPointManager()        { return randomPointManager; }
     public MinigameConfigManager     getMinigameConfigManager()     { return minigameConfigManager; }
+    public ModifierManager           getModifierManager()           { return modifierManager; }
     public PortalSchedulerManager    getPortalSchedulerManager()    { return portalSchedulerManager; }
     public DynamicDelayManager       getDynamicDelayManager()       { return dynamicDelayManager; }
     public PlayerFreezeManager       getPlayerFreezeManager()       { return playerFreezeManager; }

@@ -290,6 +290,7 @@ public class DynamicDelayManager {
         cancelTask(key + ":actionbar");
         phases.remove(key);
         gameParticipants.remove(key);
+        plugin.getModifierManager().clearSelection(key);
         // Persist active=false, keep the rest of the config
         DynamicConfig dc = configs.get(key);
         if (dc != null) {
@@ -310,6 +311,7 @@ public class DynamicDelayManager {
         cancelTask(key + ":actionbar");
         phases.remove(key);
         gameParticipants.remove(key);
+        plugin.getModifierManager().clearSelection(key);
         configs.remove(key);
         save();
     }
@@ -336,6 +338,23 @@ public class DynamicDelayManager {
             if (p != null && worldName.equalsIgnoreCase(p.getDestinationWorld())) return true;
         }
         return false;
+    }
+
+    /**
+     * Returns the portal key (lower-case) whose game world matches {@code worldName}
+     * AND whose current phase is COUNTDOWN, or {@code null} if no such portal exists.
+     * Used by {@link com.eternalworlds.portals.command.ModifiersCommand} to verify
+     * that the sender is in the right world at the right time.
+     */
+    public String getPortalInCountdownForWorld(String worldName) {
+        for (Map.Entry<String, Phase> entry : phases.entrySet()) {
+            if (entry.getValue() != Phase.COUNTDOWN) continue;
+            Portal p = plugin.getPortalManager().getPortal(entry.getKey());
+            if (p != null && worldName.equalsIgnoreCase(p.getDestinationWorld())) {
+                return entry.getKey();
+            }
+        }
+        return null;
     }
 
     /** Returns the config for this portal, or null if none. */
@@ -477,6 +496,8 @@ public class DynamicDelayManager {
 
             World destWorld = plugin.getServer().getWorld(gameWorldName);
             if (destWorld == null || destWorld.getPlayers().size() < 2) {
+                // Not enough players — cancel countdown and reset modifier selection
+                plugin.getModifierManager().clearSelection(key);
                 startWaiting(key);
                 return;
             }
@@ -524,6 +545,24 @@ public class DynamicDelayManager {
 
         if (dc.gameStartCommand() != null) {
             dispatchCommand(dc.gameStartCommand(), key, gameWorldName);
+        }
+
+        // Apply the selected modifier (if any), announce it, then clear the selection.
+        ModifierManager.Modifier selectedModifier = plugin.getModifierManager().getSelection(key);
+        if (selectedModifier != null) {
+            World gw = plugin.getServer().getWorld(gameWorldName);
+            if (gw != null) {
+                String header = ColorUtil.parse("&6&lМодификатор игры: " + selectedModifier.displayName());
+                for (Player p : gw.getPlayers()) p.sendMessage(header);
+                if (!selectedModifier.description().isEmpty()) {
+                    String desc = ColorUtil.parse("&7" + selectedModifier.description());
+                    for (Player p : gw.getPlayers()) p.sendMessage(desc);
+                }
+            }
+            for (String cmd : selectedModifier.commands()) {
+                dispatchCommand(cmd, key, gameWorldName);
+            }
+            plugin.getModifierManager().clearSelection(key);
         }
 
         String closeMsg = plugin.getMinigameConfigManager().getCloseMessage(key);
