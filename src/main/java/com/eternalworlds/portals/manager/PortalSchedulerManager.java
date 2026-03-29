@@ -3,6 +3,7 @@ package com.eternalworlds.portals.manager;
 import com.eternalworlds.portals.EternalWorldsPlugin;
 import com.eternalworlds.portals.model.Portal;
 import com.eternalworlds.portals.util.ColorUtil;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.protocol.game.ClientboundLevelChunkWithLightPacket;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.chunk.LevelChunk;
@@ -358,7 +359,7 @@ public class PortalSchedulerManager {
         // ClientboundLevelChunkWithLightPacket directly forces the client to rebuild the entire
         // chunk mesh from the authoritative server data, eliminating phantom blocks permanently.
         ServerLevel nmsLevel = ((CraftWorld) world).getHandle();
-        LevelChunk  nmsChunk = nmsLevel.getChunkAt(chunk.getX(), chunk.getZ());
+        LevelChunk  nmsChunk = nmsLevel.getChunkAt(new BlockPos(chunk.getX() << 4, 0, chunk.getZ() << 4));
         if (nmsChunk != null) {
             ClientboundLevelChunkWithLightPacket packet =
                     new ClientboundLevelChunkWithLightPacket(
