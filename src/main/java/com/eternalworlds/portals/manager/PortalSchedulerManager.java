@@ -285,15 +285,21 @@ public class PortalSchedulerManager {
 
     /**
      * Replaces every non-bedrock, non-air block in the chunk with air (no physics update).
-     * The bottom 5 Y-layers (natural bedrock zone) are always skipped as an extra safeguard.
+     * Iterates from the world's minimum height so that player-placed blocks in the
+     * natural bedrock zone are also removed; actual bedrock is skipped by the material
+     * check inside the loop, making a hard Y-offset unnecessary.
+     * After clearing, the chunk is refreshed for all nearby clients to prevent phantom
+     * blocks that arise when bulk block changes are applied without neighbour updates.
      */
     private void clearChunk(Chunk chunk) {
         World world = chunk.getWorld();
         int minY    = world.getMinHeight();
         int maxY    = world.getMaxHeight();
-        // Start cleaning above the configured minY (default: minY+5 — bedrock zone).
+        // Use the configured lower bound if provided; otherwise start from the world minimum
+        // so that every non-bedrock block (including those below the natural bedrock zone)
+        // is reached. The BEDROCK material check below already protects all bedrock blocks.
         Integer configMinY = plugin.getWorldConfigManager().getCleanMinY(world.getName());
-        int startY = (configMinY != null) ? configMinY : minY + 5;
+        int startY = (configMinY != null) ? configMinY : minY;
 
         for (int x = 0; x < 16; x++) {
             for (int z = 0; z < 16; z++) {
@@ -306,6 +312,12 @@ public class PortalSchedulerManager {
                 }
             }
         }
+
+        // Resend chunk data to all players who have this chunk loaded.
+        // setType(..., false) skips neighbour block-update packets, so bedrock blocks
+        // adjacent to cleared blocks do not receive a face-cull refresh and can appear
+        // phantom on the client. A chunk refresh guarantees a consistent client state.
+        world.refreshChunk(chunk.getX(), chunk.getZ());
     }
 
     // ---- Persistence helpers ----
