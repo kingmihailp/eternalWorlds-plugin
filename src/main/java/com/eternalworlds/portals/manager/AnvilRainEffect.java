@@ -10,20 +10,21 @@ import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitTask;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * Built-in modifier effect: every {@value #SPAWN_INTERVAL_TICKS} ticks a falling
- * anvil is spawned {@value #SPAWN_HEIGHT_OFFSET} blocks above each non-spectator
- * player who is within {@value #SPAWN_RADIUS} blocks of the world origin (0, 0).
- * A small random horizontal scatter (±{@value #HORIZONTAL_SCATTER} blocks) is
- * applied to each spawn location to make the rain feel organic rather than perfectly
- * aimed.
+ * Built-in modifier effect: every {@value #SPAWN_INTERVAL_TICKS} ticks a wave of
+ * anvils is spawned at random positions within {@value #SPAWN_RADIUS} blocks of
+ * the world origin (0, 0).  The wave size equals the number of active (non-spectator)
+ * players in the game world, so the intensity scales with the match size.
+ * Each anvil is spawned at {@value #SPAWN_Y} blocks above sea level, giving it
+ * enough fall time to be visible and threatening.
  *
- * <p>Anvils deal fall damage on landing (hurtEntities = true) and do not drop items
- * (dropItem = false).  Any anvil blocks left on the ground after the game ends are
- * removed by the world-cleaning step.
+ * <p>Anvils deal fall damage on landing ({@code hurtEntities = true}) and do not
+ * drop items ({@code dropItem = false}).  Any anvil blocks left on the ground after
+ * the game ends are cleaned up automatically by the world-cleaning step.
  *
  * <p>Register this effect once during plugin startup:
  * <pre>
@@ -34,15 +35,12 @@ import java.util.concurrent.ThreadLocalRandom;
  */
 public class AnvilRainEffect implements ModifierManager.ModifierEffect {
 
-    /** Ticks between each wave of spawns per player (40 t = 2 s). */
+    /** Ticks between each wave of anvil spawns (40 t = 2 s). */
     private static final int    SPAWN_INTERVAL_TICKS = 40;
-    /** Maximum distance from the world origin (0, 0) for a player to be targeted. */
+    /** Radius (blocks) from the world origin within which anvils are randomly placed. */
     private static final double SPAWN_RADIUS         = 50.0;
-    private static final double SPAWN_RADIUS_SQ      = SPAWN_RADIUS * SPAWN_RADIUS;
-    /** Blocks above the player's current Y at which each anvil is spawned. */
-    private static final int    SPAWN_HEIGHT_OFFSET  = 25;
-    /** Maximum random horizontal offset applied in each axis (blocks). */
-    private static final double HORIZONTAL_SCATTER   = 4.0;
+    /** Absolute Y at which every anvil is spawned (high enough to be visible as it falls). */
+    private static final int    SPAWN_Y              = 100;
 
     private final EternalWorldsPlugin     plugin;
     /** worldName (lower-case) → active spawner task */
@@ -62,22 +60,25 @@ public class AnvilRainEffect implements ModifierManager.ModifierEffect {
             World world = plugin.getServer().getWorld(worldName);
             if (world == null) return;
 
+            List<Player> active = world.getPlayers().stream()
+                    .filter(p -> p.getGameMode() != GameMode.SPECTATOR)
+                    .toList();
+            if (active.isEmpty()) return;
+
             ThreadLocalRandom rng = ThreadLocalRandom.current();
-            for (Player player : world.getPlayers()) {
-                if (player.getGameMode() == GameMode.SPECTATOR) continue;
+            int spawnY = Math.min(SPAWN_Y, world.getMaxHeight() - 1);
 
-                Location loc = player.getLocation();
-                double dx = loc.getX(), dz = loc.getZ();
-                // Only target players within the configured radius of the world center
-                if (dx * dx + dz * dz > SPAWN_RADIUS_SQ) continue;
-
-                double spawnX = loc.getX() + rng.nextDouble(-HORIZONTAL_SCATTER, HORIZONTAL_SCATTER);
-                double spawnZ = loc.getZ() + rng.nextDouble(-HORIZONTAL_SCATTER, HORIZONTAL_SCATTER);
-                // Clamp Y to stay within world bounds
-                double spawnY = Math.min(loc.getY() + SPAWN_HEIGHT_OFFSET, world.getMaxHeight() - 1);
+            // Spawn one anvil per active player, each at a random position in the radius
+            for (int i = 0; i < active.size(); i++) {
+                // Uniform random point inside a circle via rejection sampling
+                double x, z;
+                do {
+                    x = rng.nextDouble(-SPAWN_RADIUS, SPAWN_RADIUS);
+                    z = rng.nextDouble(-SPAWN_RADIUS, SPAWN_RADIUS);
+                } while (x * x + z * z > SPAWN_RADIUS * SPAWN_RADIUS);
 
                 FallingBlock anvil = world.spawnFallingBlock(
-                        new Location(world, spawnX, spawnY, spawnZ),
+                        new Location(world, x, spawnY, z),
                         Material.ANVIL.createBlockData());
                 anvil.setDropItem(false);
                 anvil.setHurtEntities(true);
@@ -101,3 +102,4 @@ public class AnvilRainEffect implements ModifierManager.ModifierEffect {
         tasks.clear();
     }
 }
+
