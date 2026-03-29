@@ -9,6 +9,7 @@ import com.eternalworlds.portals.listener.NpcListener;
 import com.eternalworlds.portals.listener.PortalListener;
 import com.eternalworlds.portals.listener.ProjectilesListener;
 import com.eternalworlds.portals.listener.StatisticsListener;
+import com.eternalworlds.portals.manager.AnvilRainEffect;
 import com.eternalworlds.portals.manager.BossManager;
 import com.eternalworlds.portals.manager.DynamicDelayManager;
 import com.eternalworlds.portals.manager.ItemRandomizationManager;
@@ -35,6 +36,7 @@ public final class EternalWorldsPlugin extends JavaPlugin {
     private RandomPointManager       randomPointManager;
     private MinigameConfigManager    minigameConfigManager;
     private ModifierManager          modifierManager;
+    private AnvilRainEffect          anvilRainEffect;
     private PortalSchedulerManager   portalSchedulerManager;
     private DynamicDelayManager      dynamicDelayManager;
     private PlayerFreezeManager      playerFreezeManager;
@@ -53,7 +55,14 @@ public final class EternalWorldsPlugin extends JavaPlugin {
         this.itemRandomizationManager  = new ItemRandomizationManager(this);
         this.randomPointManager        = new RandomPointManager(this);
         this.minigameConfigManager     = new MinigameConfigManager(this);
+        // Copy default modifiers.yml on first run, before ModifierManager loads it
+        if (!new java.io.File(getDataFolder(), "modifiers.yml").exists()) {
+            saveResource("modifiers.yml", false);
+        }
         this.modifierManager           = new ModifierManager(this);
+        // Register built-in modifier effects
+        this.anvilRainEffect           = new AnvilRainEffect(this);
+        modifierManager.registerEffect("anvil-rain", anvilRainEffect);
         this.portalSchedulerManager    = new PortalSchedulerManager(this);
         this.playerFreezeManager       = new PlayerFreezeManager();
         this.dynamicDelayManager       = new DynamicDelayManager(this);
@@ -104,6 +113,7 @@ public final class EternalWorldsPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (anvilRainEffect  != null) anvilRainEffect.stopAll();
         if (dynamicDelayManager != null) dynamicDelayManager.cancelAll();
         portalSchedulerManager.cancelAll();
         itemRandomizationManager.cancelAll();

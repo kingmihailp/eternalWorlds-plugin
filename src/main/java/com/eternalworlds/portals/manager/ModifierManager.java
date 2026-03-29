@@ -48,13 +48,28 @@ public class ModifierManager {
             List<String> commands
     ) {}
 
+    /**
+     * Optional code-based logic attached to a modifier.
+     * Implementations are registered at startup via
+     * {@link #registerEffect(String, ModifierEffect)} and are started/stopped
+     * by {@code DynamicDelayManager} alongside the modifier's console commands.
+     */
+    public interface ModifierEffect {
+        /** Called on the main thread when a game begins with this modifier active. */
+        void start(String worldName, String portalKey);
+        /** Called on the main thread when the game ends or the cycle is interrupted. */
+        void stop(String worldName, String portalKey);
+    }
+
     private final EternalWorldsPlugin plugin;
     private final File                file;
 
     /** modifier name (lower-case) → definition, insertion-ordered */
-    private final Map<String, Modifier> modifiers  = new LinkedHashMap<>();
+    private final Map<String, Modifier>       modifiers  = new LinkedHashMap<>();
     /** portal key (lower-case) → selected modifier name for the current round */
-    private final Map<String, String>   selections = new HashMap<>();
+    private final Map<String, String>         selections = new HashMap<>();
+    /** modifier name (lower-case) → optional code-based effect */
+    private final Map<String, ModifierEffect> effects    = new HashMap<>();
 
     public ModifierManager(EternalWorldsPlugin plugin) {
         this.plugin = plugin;
@@ -116,6 +131,25 @@ public class ModifierManager {
         boolean removed = modifiers.remove(name.toLowerCase()) != null;
         if (removed) save();
         return removed;
+    }
+
+    // ── Built-in effects ─────────────────────────────────────────────────────
+
+    /**
+     * Associates a code-based {@link ModifierEffect} with a modifier name.
+     * The effect is started/stopped by {@code DynamicDelayManager} whenever a
+     * game begins or ends with that modifier active.
+     */
+    public void registerEffect(String modifierName, ModifierEffect effect) {
+        effects.put(modifierName.toLowerCase(), effect);
+    }
+
+    /**
+     * Returns the registered {@link ModifierEffect} for the given modifier name,
+     * or {@code null} if no effect has been registered.
+     */
+    public ModifierEffect getEffect(String modifierName) {
+        return effects.get(modifierName.toLowerCase());
     }
 
     // ── Per-round selection ──────────────────────────────────────────────────

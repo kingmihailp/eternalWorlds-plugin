@@ -1,0 +1,20 @@
+# modifiers.yml — Game modifier definitions for EternalWorldsPortals.
+#
+# A modifier is selected with /modifiers <name> during the COUNTDOWN phase
+# and is applied the moment the game starts (GAME_RUNNING).
+#
+# Fields:
+#   display-name  — shown in chat when the modifier is selected / applied.
+#                   Supports & color codes and &#RRGGBB hex colors.
+#   description   — one-line description shown alongside the name (optional).
+#   commands      — console commands dispatched when the game starts.
+#                   Placeholders: {portal}, {world}.
+#
+# Modifiers whose name matches a registered built-in effect (such as "anvil-rain")
+# also trigger that effect's code logic in addition to any listed commands.
+
+modifiers:
+  anvil-rain:
+    display-name: "&#888888&lДождь из наковален"
+    description: "Наковальни падают с неба на игроков!"
+    commands: []

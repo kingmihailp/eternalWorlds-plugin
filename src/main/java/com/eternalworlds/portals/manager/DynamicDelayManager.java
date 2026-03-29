@@ -135,6 +135,8 @@ public class DynamicDelayManager {
     private final Map<String, Set<UUID>>     gameParticipants = new HashMap<>();
     /** portalName (lower-case) → active sidebar scoreboard shown during GAME_RUNNING. */
     private final Map<String, Scoreboard>    gameScoreboards  = new HashMap<>();
+    /** portalName (lower-case) → currently running ModifierEffect (if any). */
+    private final Map<String, ModifierManager.ModifierEffect> activeEffects = new HashMap<>();
 
     public DynamicDelayManager(EternalWorldsPlugin plugin) {
         this.plugin   = plugin;
@@ -291,6 +293,7 @@ public class DynamicDelayManager {
         phases.remove(key);
         gameParticipants.remove(key);
         plugin.getModifierManager().clearSelection(key);
+        stopActiveEffect(key, stopPortal != null ? stopPortal.getDestinationWorld() : "");
         // Persist active=false, keep the rest of the config
         DynamicConfig dc = configs.get(key);
         if (dc != null) {
@@ -312,6 +315,8 @@ public class DynamicDelayManager {
         phases.remove(key);
         gameParticipants.remove(key);
         plugin.getModifierManager().clearSelection(key);
+        Portal removePortal = plugin.getPortalManager().getPortal(key);
+        stopActiveEffect(key, removePortal != null ? removePortal.getDestinationWorld() : "");
         configs.remove(key);
         save();
     }
@@ -413,6 +418,13 @@ public class DynamicDelayManager {
         });
         phases.clear();
         gameParticipants.clear();
+        // Stop all running modifier effects
+        activeEffects.forEach((k, effect) -> {
+            Portal p = plugin.getPortalManager().getPortal(k);
+            String wn = p != null ? p.getDestinationWorld() : "";
+            effect.stop(wn, k);
+        });
+        activeEffects.clear();
     }
 
     // ── Lifecycle ────────────────────────────────────────────────────────────
@@ -562,6 +574,13 @@ public class DynamicDelayManager {
             for (String cmd : selectedModifier.commands()) {
                 dispatchCommand(cmd, key, gameWorldName);
             }
+            // Start the built-in code effect for this modifier (if one is registered)
+            ModifierManager.ModifierEffect effect =
+                    plugin.getModifierManager().getEffect(selectedModifier.name());
+            if (effect != null) {
+                effect.start(gameWorldName, key);
+                activeEffects.put(key, effect);
+            }
             plugin.getModifierManager().clearSelection(key);
         }
 
@@ -628,6 +647,7 @@ public class DynamicDelayManager {
         phases.put(key, Phase.GAME_ENDING);
         cancelTask(key);
         cancelTask(key + ":monitor");
+        stopActiveEffect(key, gameWorldName);
 
         removeGameScoreboard(key, gameWorldName);
         plugin.getItemRandomizationManager().stopRandomization(gameWorldName);
@@ -829,5 +849,11 @@ public class DynamicDelayManager {
     private void cancelTask(String key) {
         BukkitTask t = tasks.remove(key);
         if (t != null) t.cancel();
+    }
+
+    /** Stops and removes the active modifier effect for the given portal key (if any). */
+    private void stopActiveEffect(String key, String worldName) {
+        ModifierManager.ModifierEffect effect = activeEffects.remove(key);
+        if (effect != null) effect.stop(worldName, key);
     }
 }
