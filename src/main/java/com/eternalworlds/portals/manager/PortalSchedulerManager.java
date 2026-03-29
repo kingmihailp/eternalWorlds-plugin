@@ -3,11 +3,16 @@ package com.eternalworlds.portals.manager;
 import com.eternalworlds.portals.EternalWorldsPlugin;
 import com.eternalworlds.portals.model.Portal;
 import com.eternalworlds.portals.util.ColorUtil;
+import net.minecraft.network.protocol.game.ClientboundLevelChunkWithLightPacket;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.chunk.LevelChunk;
 import org.bukkit.Chunk;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.craftbukkit.CraftWorld;
+import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitTask;
@@ -345,11 +350,23 @@ public class PortalSchedulerManager {
             }
         }
 
-        // Resend chunk data to all players who have this chunk loaded.
-        // setType(..., false) skips neighbour block-update packets, so bedrock blocks
-        // adjacent to cleared blocks do not receive a face-cull refresh and can appear
-        // phantom on the client. A chunk refresh guarantees a consistent client state.
-        world.refreshChunk(chunk.getX(), chunk.getZ());
+        // Force-resend the full chunk data (block palette + section bitmasks + light) to every
+        // player in the world.  block.setType(..., false) suppresses neighbour-update packets,
+        // which leaves bedrock faces un-culled on the client after adjacent blocks are cleared —
+        // producing the "phantom bedrock" visual.
+        // World.refreshChunk() is deprecated and is effectively a no-op in Paper 1.21; sending
+        // ClientboundLevelChunkWithLightPacket directly forces the client to rebuild the entire
+        // chunk mesh from the authoritative server data, eliminating phantom blocks permanently.
+        ServerLevel nmsLevel = ((CraftWorld) world).getHandle();
+        LevelChunk  nmsChunk = nmsLevel.getChunkAt(chunk.getX(), chunk.getZ());
+        if (nmsChunk != null) {
+            ClientboundLevelChunkWithLightPacket packet =
+                    new ClientboundLevelChunkWithLightPacket(
+                            nmsChunk, nmsLevel.getLightEngine(), null, null);
+            for (Player player : world.getPlayers()) {
+                ((CraftPlayer) player).getHandle().connection.send(packet);
+            }
+        }
     }
 
     // ---- Persistence helpers ----
