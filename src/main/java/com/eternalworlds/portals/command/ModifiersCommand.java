@@ -50,13 +50,19 @@ public class ModifiersCommand implements CommandExecutor, TabCompleter {
 
         String sub = args[0].toLowerCase();
 
-        // /modifiers list — available from any location
+        // /modifiers list — available from any location, no permission required
         if (sub.equals("list")) {
             sendModifierList(player);
             return true;
         }
 
-        // Voting commands require the player to be in a countdown world
+        // Voting and clearing require admin permission
+        if (!player.hasPermission("eternalworlds.portal.admin")) {
+            player.sendMessage(ColorUtil.parse("&cУ вас нет прав для использования этой команды."));
+            return true;
+        }
+
+        // Admin voting commands require the player to be in a countdown world
         String worldName = player.getWorld().getName();
         String portalKey = plugin.getDynamicDelayManager().getPortalInCountdownForWorld(worldName);
         if (portalKey == null) {
