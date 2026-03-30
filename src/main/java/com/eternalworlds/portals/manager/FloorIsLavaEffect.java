@@ -29,8 +29,8 @@ public class FloorIsLavaEffect implements ModifierManager.ModifierEffect {
     private static final int LAVA_START_Y       = -5;
     /** Highest Y level filled by lava. */
     private static final int LAVA_END_Y         = 77;
-    /** Half-side of the square (blocks) from world origin in which lava is placed (30×30). */
-    private static final int LAVA_HALF          = 15;
+    /** Half-side of the square (blocks) from world origin in which lava is placed (60×60). */
+    private static final int LAVA_HALF          = 30;
     /** Ticks between each rising layer (80 t = 4 s). */
     private static final int LAYER_INTERVAL_TICKS = 80;
     /** Announce the current lava level every N layers. */
