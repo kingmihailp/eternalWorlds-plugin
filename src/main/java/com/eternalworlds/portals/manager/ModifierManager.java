@@ -5,6 +5,8 @@ import org.bukkit.configuration.file.YamlConfiguration;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -86,6 +88,34 @@ public class ModifierManager {
         modifiers.clear();
         if (!file.exists()) return;
         YamlConfiguration cfg = YamlConfiguration.loadConfiguration(file);
+
+        // Merge any entries present in the bundled default resource but missing from
+        // the server's file.  This ensures new modifiers added in plugin updates appear
+        // automatically without requiring the admin to delete and recreate the file.
+        java.io.InputStream defaultStream = plugin.getResource("modifiers.yml");
+        if (defaultStream != null) {
+            YamlConfiguration defaults = YamlConfiguration.loadConfiguration(
+                    new InputStreamReader(defaultStream, StandardCharsets.UTF_8));
+            if (defaults.isConfigurationSection("modifiers")) {
+                boolean changed = false;
+                for (String key : defaults.getConfigurationSection("modifiers").getKeys(false)) {
+                    if (!cfg.isSet("modifiers." + key)) {
+                        String src = "modifiers." + key;
+                        cfg.set(src + ".display-name", defaults.getString(src + ".display-name", key));
+                        cfg.set(src + ".description",  defaults.getString(src + ".description",  ""));
+                        cfg.set(src + ".commands",     defaults.getStringList(src + ".commands"));
+                        changed = true;
+                        plugin.getLogger().info("[Modifiers] Added new modifier '" + key + "' from defaults.");
+                    }
+                }
+                if (changed) {
+                    try { cfg.save(file); } catch (IOException e) {
+                        plugin.getLogger().severe("Failed to update modifiers.yml: " + e.getMessage());
+                    }
+                }
+            }
+        }
+
         if (!cfg.isConfigurationSection("modifiers")) return;
         for (String key : cfg.getConfigurationSection("modifiers").getKeys(false)) {
             String path        = "modifiers." + key;
