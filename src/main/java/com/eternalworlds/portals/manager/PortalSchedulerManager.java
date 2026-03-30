@@ -300,7 +300,7 @@ public class PortalSchedulerManager {
             while (index.get() < chunks.size() && processed < CHUNKS_PER_TICK) {
                 Chunk chunk = chunks.get(index.getAndIncrement());
                 try {
-                    clearChunk(chunk);
+                    clearChunkBlocks(chunk);
                 } catch (Exception e) {
                     plugin.getLogger().warning("[Portals] Error cleaning chunk ("
                             + chunk.getX() + "," + chunk.getZ() + ") in '"
@@ -311,8 +311,18 @@ public class PortalSchedulerManager {
             if (index.get() >= chunks.size()) {
                 BukkitTask self = cleaningTasks.remove(worldKey);
                 if (self != null) self.cancel();
-                // Fire the callback now that all chunks have been processed.
-                if (onComplete != null) onComplete.run();
+
+                // All blocks are cleared — send chunk packets for EVERY processed chunk now
+                // so that cross-chunk face-culling uses fully-cleared neighbour data and
+                // bedrock faces on chunk boundaries are never phantom.
+                resendChunkPackets(world, chunks);
+
+                // Second pass after a short delay: catches clients whose render pipeline
+                // queued the re-mesh before the first packet batch arrived.
+                plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+                    resendChunkPackets(world, chunks);
+                    if (onComplete != null) onComplete.run();
+                }, 10L); // 0.5 s
             }
         }, 1L, 1L);
 
@@ -322,49 +332,51 @@ public class PortalSchedulerManager {
     }
 
     /**
-     * Replaces every non-bedrock, non-air block in the chunk with air (no physics update).
-     * Iterates from the world's minimum height so that player-placed blocks in the
-     * natural bedrock zone are also removed; actual bedrock is skipped by the material
-     * check inside the loop, making a hard Y-offset unnecessary.
-     * After clearing, the chunk is refreshed for all nearby clients to prevent phantom
-     * blocks that arise when bulk block changes are applied without neighbour updates.
+     * Phase 1 of chunk cleaning: sets every non-bedrock, non-air block to AIR without
+     * physics or neighbour-update packets.  Does NOT send any chunk packet — call
+     * {@link #resendChunkPackets} after ALL chunks have been cleared so that the client
+     * rebuilds each chunk mesh with already-empty neighbours, preventing phantom bedrock
+     * on chunk boundaries caused by stale cross-chunk face-culling.
      */
-    private void clearChunk(Chunk chunk) {
+    private void clearChunkBlocks(Chunk chunk) {
         World world = chunk.getWorld();
-        int minY    = world.getMinHeight();
         int maxY    = world.getMaxHeight();
-        // Use the configured lower bound if provided; otherwise start from the world minimum
-        // so that every non-bedrock block (including those below the natural bedrock zone)
-        // is reached. The BEDROCK material check below already protects all bedrock blocks.
         Integer configMinY = plugin.getWorldConfigManager().getCleanMinY(world.getName());
-        int startY = (configMinY != null) ? configMinY : minY;
+        int startY = (configMinY != null) ? configMinY : world.getMinHeight();
 
         for (int x = 0; x < 16; x++) {
             for (int z = 0; z < 16; z++) {
                 for (int y = startY; y < maxY; y++) {
                     var block = chunk.getBlock(x, y, z);
-                    Material type = block.getType();
-                    if (type != Material.BEDROCK && !block.isEmpty()) {
+                    if (block.getType() != Material.BEDROCK && !block.isEmpty()) {
                         block.setType(Material.AIR, false);
                     }
                 }
             }
         }
+    }
 
-        // Force-resend the full chunk data (block palette + section bitmasks + light) to every
-        // player in the world.  block.setType(..., false) suppresses neighbour-update packets,
-        // which leaves bedrock faces un-culled on the client after adjacent blocks are cleared —
-        // producing the "phantom bedrock" visual.
-        // World.refreshChunk() is deprecated and is effectively a no-op in Paper 1.21; sending
-        // ClientboundLevelChunkWithLightPacket directly forces the client to rebuild the entire
-        // chunk mesh from the authoritative server data, eliminating phantom blocks permanently.
+    /**
+     * Phase 2 of chunk cleaning: sends {@link ClientboundLevelChunkWithLightPacket} for
+     * every chunk in the list to all players in the world.
+     *
+     * <p>Sending packets only after <em>all</em> chunks have been cleared ensures that
+     * when the client re-meshes a chunk it already has the correct (empty) data for all
+     * neighbours, so bedrock faces on chunk boundaries are never phantom.
+     */
+    private void resendChunkPackets(World world, List<Chunk> chunks) {
         ServerLevel nmsLevel = ((CraftWorld) world).getHandle();
-        LevelChunk  nmsChunk = nmsLevel.getChunkAt(new BlockPos(chunk.getX() << 4, 0, chunk.getZ() << 4));
-        if (nmsChunk != null) {
+        List<Player> players = world.getPlayers();
+        if (players.isEmpty()) return;
+
+        for (Chunk chunk : chunks) {
+            LevelChunk nmsChunk = nmsLevel.getChunkAt(
+                    new BlockPos(chunk.getX() << 4, 0, chunk.getZ() << 4));
+            if (nmsChunk == null) continue;
             ClientboundLevelChunkWithLightPacket packet =
                     new ClientboundLevelChunkWithLightPacket(
                             nmsChunk, nmsLevel.getLightEngine(), null, null);
-            for (Player player : world.getPlayers()) {
+            for (Player player : players) {
                 ((CraftPlayer) player).getHandle().connection.send(packet);
             }
         }
