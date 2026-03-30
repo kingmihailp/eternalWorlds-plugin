@@ -1,6 +1,7 @@
 package com.eternalworlds.portals.manager;
 
 import com.eternalworlds.portals.EternalWorldsPlugin;
+import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.entity.Item;
 import org.bukkit.event.EventHandler;
@@ -93,27 +94,38 @@ public class RandomizationEffect implements ModifierManager.ModifierEffect, List
 
     // ── Event handlers ───────────────────────────────────────────────────────
 
-    /** Replaces every item a block would drop with a random item from the pool. */
+    /** Replaces every item a block would drop with 5–12 random items from the pool. */
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onBlockDrop(BlockDropItemEvent event) {
         if (!activeWorlds.contains(event.getBlock().getWorld().getName().toLowerCase())) return;
-        ThreadLocalRandom rng = ThreadLocalRandom.current();
-        for (Item item : event.getItems()) {
+        ThreadLocalRandom rng   = ThreadLocalRandom.current();
+        int               count = rng.nextInt(5, 13); // 5..12 inclusive
+        Location          loc   = event.getBlock().getLocation().add(0.5, 0.5, 0.5);
+
+        // Reuse existing item entities (modify in-place to avoid extra spawns)
+        List<Item> existing = event.getItems();
+        int modified = 0;
+        for (Item item : existing) {
             item.getItemStack().setType(randomMaterial(rng));
             item.getItemStack().setAmount(1);
+            modified++;
+        }
+        // Spawn any additional items beyond what the block naturally dropped
+        for (int i = modified; i < count; i++) {
+            event.getBlock().getWorld().dropItemNaturally(loc, new ItemStack(randomMaterial(rng)));
         }
     }
 
-    /** Replaces every item a mob would drop with a random item from the pool. */
+    /** Replaces every item a mob would drop with 5–12 random items from the pool. */
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onEntityDeath(EntityDeathEvent event) {
         if (!activeWorlds.contains(event.getEntity().getWorld().getName().toLowerCase())) return;
-        List<ItemStack> drops = event.getDrops();
-        if (drops.isEmpty()) return;
-        ThreadLocalRandom rng = ThreadLocalRandom.current();
-        for (ItemStack stack : drops) {
-            stack.setType(randomMaterial(rng));
-            stack.setAmount(1);
+        ThreadLocalRandom rng   = ThreadLocalRandom.current();
+        int               count = rng.nextInt(5, 13); // 5..12 inclusive
+
+        event.getDrops().clear();
+        for (int i = 0; i < count; i++) {
+            event.getDrops().add(new ItemStack(randomMaterial(rng)));
         }
         event.setDroppedExp(0);
     }
