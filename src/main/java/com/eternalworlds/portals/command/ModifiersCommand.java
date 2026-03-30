@@ -50,15 +50,14 @@ public class ModifiersCommand implements CommandExecutor, TabCompleter {
 
         String sub = args[0].toLowerCase();
 
-        // /modifiers list — available from any location, no permission required
-        if (sub.equals("list")) {
-            sendModifierList(player);
+        if (!player.hasPermission("eternalworlds.portal.admin")) {
+            player.sendMessage(ColorUtil.parse("&cУ вас нет прав для использования этой команды."));
             return true;
         }
 
-        // Voting and clearing require admin permission
-        if (!player.hasPermission("eternalworlds.portal.admin")) {
-            player.sendMessage(ColorUtil.parse("&cУ вас нет прав для использования этой команды."));
+        // /modifiers list — available from any location
+        if (sub.equals("list")) {
+            sendModifierList(player);
             return true;
         }
 
