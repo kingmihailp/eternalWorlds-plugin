@@ -65,7 +65,8 @@ public class DynamicDelayManager {
     private static final String       DEF_SCOREBOARD_TITLE = "&6&lЕтернал Ворлдс";
     private static final List<String> DEF_SCOREBOARD_LINES = List.of(
             "&8───────────────",
-            "&eИгроков: &c{players}"
+            "&eИгроков: &c{players}",
+            "&6Модификатор: &f{modifier}"
     );
 
     // ── Data structures ───────────────────────────────────────────────────────
@@ -137,6 +138,8 @@ public class DynamicDelayManager {
     private final Map<String, Scoreboard>    gameScoreboards  = new HashMap<>();
     /** portalName (lower-case) → currently running ModifierEffect (if any). */
     private final Map<String, ModifierManager.ModifierEffect> activeEffects = new HashMap<>();
+    /** portalName (lower-case) → display name of the active modifier (already color-translated). */
+    private final Map<String, String> activeModifierNames = new HashMap<>();
 
     public DynamicDelayManager(EternalWorldsPlugin plugin) {
         this.plugin   = plugin;
@@ -595,6 +598,8 @@ public class DynamicDelayManager {
                 effect.start(gameWorldName, key);
                 activeEffects.put(key, effect);
             }
+            // Track display name for the scoreboard {modifier} placeholder
+            activeModifierNames.put(key, ColorUtil.parse(winner.displayName()));
         }
         plugin.getModifierManager().clearSelection(key);
 
@@ -777,11 +782,12 @@ public class DynamicDelayManager {
         String titleTpl = resolve(dc != null ? dc.scoreboardTitle() : null, DEF_SCOREBOARD_TITLE);
         List<String> lines = (dc != null && dc.scoreboardLines() != null)
                 ? dc.scoreboardLines() : DEF_SCOREBOARD_LINES;
+        String modifier = activeModifierNames.getOrDefault(key, "&7—");
 
         Scoreboard board = plugin.getServer().getScoreboardManager().getNewScoreboard();
         Objective obj = board.registerNewObjective("ewgame", Criteria.DUMMY,
                 LegacyComponentSerializer.legacySection().deserialize(
-                        ColorUtil.parse(titleTpl.replace("{players}", "?").replace("{seconds}", "?"))));
+                        ColorUtil.parse(titleTpl.replace("{players}", "?").replace("{seconds}", "?").replace("{modifier}", modifier))));
         obj.setDisplaySlot(DisplaySlot.SIDEBAR);
 
         // Each line uses a unique invisible entry string ("§0", "§1", … "§f")
@@ -791,7 +797,7 @@ public class DynamicDelayManager {
             Team team = board.registerNewTeam("ewline" + i);
             team.addEntry(entry);
             team.prefix(LegacyComponentSerializer.legacySection().deserialize(
-                    ColorUtil.parse(lines.get(i).replace("{players}", "?").replace("{seconds}", "?"))));
+                    ColorUtil.parse(lines.get(i).replace("{players}", "?").replace("{seconds}", "?").replace("{modifier}", modifier))));
             // Higher score → displayed higher; first line gets the highest score
             obj.getScore(entry).setScore(lines.size() - i);
         }
@@ -814,16 +820,17 @@ public class DynamicDelayManager {
         List<String> lines = (dc != null && dc.scoreboardLines() != null)
                 ? dc.scoreboardLines() : DEF_SCOREBOARD_LINES;
 
-        String players = String.valueOf(activePlayers);
-        String secs    = String.valueOf(secondsLeft);
+        String players  = String.valueOf(activePlayers);
+        String secs     = String.valueOf(secondsLeft);
+        String modifier = activeModifierNames.getOrDefault(key, "&7—");
         obj.displayName(LegacyComponentSerializer.legacySection().deserialize(
-                ColorUtil.parse(titleTpl.replace("{players}", players).replace("{seconds}", secs))));
+                ColorUtil.parse(titleTpl.replace("{players}", players).replace("{seconds}", secs).replace("{modifier}", modifier))));
 
         for (int i = 0; i < Math.min(lines.size(), 16); i++) {
             Team team = board.getTeam("ewline" + i);
             if (team == null) continue;
             team.prefix(LegacyComponentSerializer.legacySection().deserialize(
-                    ColorUtil.parse(lines.get(i).replace("{players}", players).replace("{seconds}", secs))));
+                    ColorUtil.parse(lines.get(i).replace("{players}", players).replace("{seconds}", secs).replace("{modifier}", modifier))));
         }
 
         // Assign board to any players who don't have it yet (e.g. spectators)
@@ -867,6 +874,7 @@ public class DynamicDelayManager {
 
     /** Stops and removes the active modifier effect for the given portal key (if any). */
     private void stopActiveEffect(String key, String worldName) {
+        activeModifierNames.remove(key);
         ModifierManager.ModifierEffect effect = activeEffects.remove(key);
         if (effect != null) effect.stop(worldName, key);
     }

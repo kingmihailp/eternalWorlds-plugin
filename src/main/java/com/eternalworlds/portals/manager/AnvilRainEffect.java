@@ -87,6 +87,8 @@ public class AnvilRainEffect implements ModifierManager.ModifierEffect {
                         Material.ANVIL.createBlockData());
                 anvil.setDropItem(false);
                 anvil.setHurtEntities(true);
+                anvil.setFallDamageAmount(2.0f); // 2 HP per block fallen (vanilla anvil behaviour)
+                anvil.setMaxDamage(40);           // cap at 40 HP (20 hearts)
             }
         }, SPAWN_INTERVAL_TICKS, SPAWN_INTERVAL_TICKS);
 
