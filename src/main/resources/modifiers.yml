@@ -30,3 +30,7 @@ modifiers:
     display-name: "&#FF4400&lПол — это лава"
     description: "Лава медленно поднимается снизу!"
     commands: []
+  chaos:
+    display-name: "&#FF0000&lРежим хаоса"
+    description: "Рандомные блоки и мобы появляются в мире!"
+    commands: []
