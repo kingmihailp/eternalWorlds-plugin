@@ -10,51 +10,59 @@ import org.bukkit.event.block.BlockDropItemEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.inventory.ItemStack;
 
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * Built-in modifier effect: replaces all block and mob drops with random items
- * chosen from a curated pool.  Only affects the specific game world(s) in which
- * the modifier is active — every other world is untouched.
+ * Built-in modifier effect: replaces all block and mob drops with a random item
+ * drawn from the full Minecraft item registry (every obtainable item except
+ * bedrock and ender chest).
  *
- * <p>The effect is active for the duration of one game round.  {@link #start}
- * registers the world; {@link #stop} deregisters it.  The listener itself stays
- * registered with Bukkit for the lifetime of the plugin (registered once in
- * {@code EternalWorldsPlugin.onEnable}) and simply no-ops for inactive worlds.
+ * <p>The pool is built once at class-load time by iterating {@link Material#values()}
+ * and keeping only materials that satisfy {@link Material#isItem()}, are not air,
+ * and are not in the small exclusion list.  This automatically includes every new
+ * item added by future Minecraft versions.
  *
- * <p>Register this effect at plugin startup:
- * <pre>
- *   modifierManager.registerEffect("randomization", randomizationEffect);
- *   getServer().getPluginManager().registerEvents(randomizationEffect, this);
- * </pre>
+ * <p>Only the active game world is affected — all other worlds are untouched.
  */
 public class RandomizationEffect implements ModifierManager.ModifierEffect, Listener {
 
     /**
-     * Pool of items that can appear as a randomized drop.
-     * Intentionally varied (resources, food, mob-drops, rare items) to keep
-     * every game interesting while avoiding obviously game-breaking items.
+     * Materials that should never appear as randomized drops even though they are
+     * technically obtainable items (admin/creative-only blocks, illegal items, etc.).
      */
-    private static final Material[] DROP_POOL = {
-            Material.COAL,             Material.RAW_IRON,         Material.RAW_GOLD,
-            Material.IRON_INGOT,       Material.GOLD_INGOT,       Material.DIAMOND,
-            Material.EMERALD,          Material.REDSTONE,         Material.LAPIS_LAZULI,
-            Material.QUARTZ,           Material.AMETHYST_SHARD,   Material.COPPER_INGOT,
-            Material.STICK,            Material.STRING,           Material.BONE,
-            Material.ARROW,            Material.ROTTEN_FLESH,     Material.GUNPOWDER,
-            Material.SPIDER_EYE,       Material.BLAZE_ROD,        Material.ENDER_PEARL,
-            Material.SLIME_BALL,       Material.MAGMA_CREAM,      Material.BLAZE_POWDER,
-            Material.BOOK,             Material.PAPER,            Material.FEATHER,
-            Material.LEATHER,          Material.WHEAT,            Material.POTATO,
-            Material.CARROT,           Material.BEETROOT,         Material.SUGAR_CANE,
-            Material.OAK_LOG,          Material.SAND,             Material.GRAVEL,
-            Material.FLINT,            Material.CLAY_BALL,        Material.BOWL,
-            Material.NETHER_BRICK,     Material.CHORUS_FRUIT,     Material.HONEYCOMB,
-            Material.PHANTOM_MEMBRANE, Material.NAUTILUS_SHELL,   Material.TURTLE_SCUTE,
-    };
+    private static final Set<Material> EXCLUDED = Set.of(
+            Material.BEDROCK,
+            Material.ENDER_CHEST,
+            Material.BARRIER,
+            Material.LIGHT,
+            Material.COMMAND_BLOCK,
+            Material.CHAIN_COMMAND_BLOCK,
+            Material.REPEATING_COMMAND_BLOCK,
+            Material.COMMAND_BLOCK_MINECART,
+            Material.STRUCTURE_BLOCK,
+            Material.STRUCTURE_VOID,
+            Material.JIGSAW,
+            Material.DEBUG_STICK,
+            Material.KNOWLEDGE_BOOK,
+            Material.WRITTEN_BOOK   // contains arbitrary text — skip to avoid confusion
+    );
+
+    /** Full drop pool — every obtainable item minus the exclusion list. */
+    private static final Material[] DROP_POOL;
+
+    static {
+        List<Material> pool = new ArrayList<>();
+        for (Material m : Material.values()) {
+            if (m.isItem() && !m.isAir() && !EXCLUDED.contains(m)) {
+                pool.add(m);
+            }
+        }
+        DROP_POOL = pool.toArray(new Material[0]);
+    }
 
     private final EternalWorldsPlugin plugin;
     /** Lower-case world names for which drop randomization is currently active. */
@@ -69,6 +77,8 @@ public class RandomizationEffect implements ModifierManager.ModifierEffect, List
     @Override
     public void start(String worldName, String portalKey) {
         activeWorlds.add(worldName.toLowerCase());
+        plugin.getLogger().info("[Modifiers] Randomization active in world '" + worldName
+                + "' — pool size: " + DROP_POOL.length + " items.");
     }
 
     @Override

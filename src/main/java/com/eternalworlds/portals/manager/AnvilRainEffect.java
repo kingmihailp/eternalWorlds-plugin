@@ -1,10 +1,12 @@
 package com.eternalworlds.portals.manager;
 
 import com.eternalworlds.portals.EternalWorldsPlugin;
+import net.minecraft.world.entity.item.FallingBlockEntity;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
+import org.bukkit.craftbukkit.entity.CraftFallingBlock;
 import org.bukkit.entity.FallingBlock;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitTask;
@@ -17,21 +19,10 @@ import java.util.concurrent.ThreadLocalRandom;
 /**
  * Built-in modifier effect: every {@value #SPAWN_INTERVAL_TICKS} ticks a wave of
  * anvils is spawned at random positions within {@value #SPAWN_RADIUS} blocks of
- * the world origin (0, 0).  The wave size equals the number of active (non-spectator)
- * players in the game world, so the intensity scales with the match size.
- * Each anvil is spawned at {@value #SPAWN_Y} blocks above sea level, giving it
- * enough fall time to be visible and threatening.
+ * the world origin (0, 0).
  *
- * <p>Anvils deal fall damage on landing ({@code hurtEntities = true}) and do not
- * drop items ({@code dropItem = false}).  Any anvil blocks left on the ground after
- * the game ends are cleaned up automatically by the world-cleaning step.
- *
- * <p>Register this effect once during plugin startup:
- * <pre>
- *   modifierManager.registerEffect("anvil-rain", new AnvilRainEffect(plugin));
- * </pre>
- * A matching entry in {@code modifiers.yml} named {@code anvil-rain} provides
- * the display name and description shown to players.
+ * <p>Fall damage is applied via NMS because the Bukkit 1.21.1 API does not expose
+ * {@code setFallDamageAmount} / {@code setMaxDamage} on {@link FallingBlock}.
  */
 public class AnvilRainEffect implements ModifierManager.ModifierEffect {
 
@@ -39,12 +30,12 @@ public class AnvilRainEffect implements ModifierManager.ModifierEffect {
     private static final int    SPAWN_INTERVAL_TICKS = 40;
     /** Radius (blocks) from the world origin within which anvils are randomly placed. */
     private static final double SPAWN_RADIUS         = 25.0;
-    /** Absolute Y at which every anvil is spawned (high enough to be visible as it falls). */
+    /** Absolute Y at which every anvil is spawned. */
     private static final int    SPAWN_Y              = 100;
-    /** How many anvils to spawn per active player each wave. */
-    private static final int    ANVILS_PER_PLAYER    = 5;
+    /** Anvils spawned per active (non-spectator) player each wave. */
+    private static final int    ANVILS_PER_PLAYER    = 8;
     /** Minimum anvils per wave regardless of player count. */
-    private static final int    ANVILS_MIN           = 12;
+    private static final int    ANVILS_MIN           = 20;
 
     private final EternalWorldsPlugin     plugin;
     /** worldName (lower-case) → active spawner task */
@@ -58,7 +49,7 @@ public class AnvilRainEffect implements ModifierManager.ModifierEffect {
 
     @Override
     public void start(String worldName, String portalKey) {
-        stop(worldName, portalKey); // cancel any residual task for this world
+        stop(worldName, portalKey);
 
         BukkitTask task = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
             World world = plugin.getServer().getWorld(worldName);
@@ -69,13 +60,11 @@ public class AnvilRainEffect implements ModifierManager.ModifierEffect {
                     .toList();
             if (active.isEmpty()) return;
 
-            ThreadLocalRandom rng = ThreadLocalRandom.current();
-            int spawnY = Math.min(SPAWN_Y, world.getMaxHeight() - 1);
+            ThreadLocalRandom rng    = ThreadLocalRandom.current();
+            int               spawnY = Math.min(SPAWN_Y, world.getMaxHeight() - 1);
+            int               count  = Math.max(ANVILS_MIN, active.size() * ANVILS_PER_PLAYER);
 
-            // Wave size scales with player count but never drops below ANVILS_MIN
-            int waveSize = Math.max(ANVILS_MIN, active.size() * ANVILS_PER_PLAYER);
-            for (int i = 0; i < waveSize; i++) {
-                // Uniform random point inside a circle via rejection sampling
+            for (int i = 0; i < count; i++) {
                 double x, z;
                 do {
                     x = rng.nextDouble(-SPAWN_RADIUS, SPAWN_RADIUS);
@@ -87,8 +76,12 @@ public class AnvilRainEffect implements ModifierManager.ModifierEffect {
                         Material.ANVIL.createBlockData());
                 anvil.setDropItem(false);
                 anvil.setHurtEntities(true);
-                anvil.setFallDamageAmount(2.0f); // 2 HP per block fallen (vanilla anvil behaviour)
-                anvil.setMaxDamage(40);           // cap at 40 HP (20 hearts)
+
+                // Bukkit 1.21.1 does not expose fall-damage setters on FallingBlock;
+                // set the NMS fields directly (Mojang-mapped: hurtEntities, fallDamageAmount, fallDamageMax).
+                FallingBlockEntity nms = ((CraftFallingBlock) anvil).getHandle();
+                nms.fallDamageAmount = 2.0f;  // 2 HP per block fallen
+                nms.fallDamageMax    = 40;    // cap at 40 HP (20 hearts)
             }
         }, SPAWN_INTERVAL_TICKS, SPAWN_INTERVAL_TICKS);
 
@@ -109,4 +102,3 @@ public class AnvilRainEffect implements ModifierManager.ModifierEffect {
         tasks.clear();
     }
 }
-
