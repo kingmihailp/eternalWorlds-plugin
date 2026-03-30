@@ -10,6 +10,7 @@ import com.eternalworlds.portals.listener.PortalListener;
 import com.eternalworlds.portals.listener.ProjectilesListener;
 import com.eternalworlds.portals.listener.StatisticsListener;
 import com.eternalworlds.portals.manager.AnvilRainEffect;
+import com.eternalworlds.portals.manager.RandomizationEffect;
 import com.eternalworlds.portals.manager.BossManager;
 import com.eternalworlds.portals.manager.DynamicDelayManager;
 import com.eternalworlds.portals.manager.ItemRandomizationManager;
@@ -37,6 +38,7 @@ public final class EternalWorldsPlugin extends JavaPlugin {
     private MinigameConfigManager    minigameConfigManager;
     private ModifierManager          modifierManager;
     private AnvilRainEffect          anvilRainEffect;
+    private RandomizationEffect      randomizationEffect;
     private PortalSchedulerManager   portalSchedulerManager;
     private DynamicDelayManager      dynamicDelayManager;
     private PlayerFreezeManager      playerFreezeManager;
@@ -63,6 +65,8 @@ public final class EternalWorldsPlugin extends JavaPlugin {
         // Register built-in modifier effects
         this.anvilRainEffect           = new AnvilRainEffect(this);
         modifierManager.registerEffect("anvil-rain", anvilRainEffect);
+        this.randomizationEffect       = new RandomizationEffect(this);
+        modifierManager.registerEffect("randomization", randomizationEffect);
         this.portalSchedulerManager    = new PortalSchedulerManager(this);
         this.playerFreezeManager       = new PlayerFreezeManager();
         this.dynamicDelayManager       = new DynamicDelayManager(this);
@@ -87,6 +91,7 @@ public final class EternalWorldsPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new NpcListener(this), this);
         getServer().getPluginManager().registerEvents(new ProjectilesListener(this), this);
         getServer().getPluginManager().registerEvents(new BossListener(this), this);
+        getServer().getPluginManager().registerEvents(randomizationEffect, this);
 
         NpcCommand npcExecutor = new NpcCommand(this);
         for (String cmd : new String[]{"npc", "spawnnpc", "removenpc", "npcattributes", "setnpcitems"}) {
@@ -113,7 +118,8 @@ public final class EternalWorldsPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        if (anvilRainEffect  != null) anvilRainEffect.stopAll();
+        if (anvilRainEffect      != null) anvilRainEffect.stopAll();
+        if (randomizationEffect  != null) randomizationEffect.stopAll();
         if (dynamicDelayManager != null) dynamicDelayManager.cancelAll();
         portalSchedulerManager.cancelAll();
         itemRandomizationManager.cancelAll();

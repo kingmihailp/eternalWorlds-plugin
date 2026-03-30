@@ -38,7 +38,7 @@ public class AnvilRainEffect implements ModifierManager.ModifierEffect {
     /** Ticks between each wave of anvil spawns (40 t = 2 s). */
     private static final int    SPAWN_INTERVAL_TICKS = 40;
     /** Radius (blocks) from the world origin within which anvils are randomly placed. */
-    private static final double SPAWN_RADIUS         = 50.0;
+    private static final double SPAWN_RADIUS         = 25.0;
     /** Absolute Y at which every anvil is spawned (high enough to be visible as it falls). */
     private static final int    SPAWN_Y              = 100;
     /** How many anvils to spawn per active player each wave. */

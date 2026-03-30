@@ -18,3 +18,7 @@ modifiers:
     display-name: "&#888888&lДождь из наковален"
     description: "Наковальни падают с неба на игроков!"
     commands: []
+  randomization:
+    display-name: "&#AA00FF&lРандомизация"
+    description: "Весь дроп с блоков и мобов перемешан!"
+    commands: []
