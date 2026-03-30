@@ -1,13 +1,10 @@
 package com.eternalworlds.portals.manager;
 
 import com.eternalworlds.portals.EternalWorldsPlugin;
-import net.minecraft.world.entity.item.FallingBlockEntity;
 import org.bukkit.GameMode;
-import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
-import org.bukkit.craftbukkit.entity.CraftFallingBlock;
-import org.bukkit.entity.FallingBlock;
+import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitTask;
 
@@ -18,19 +15,21 @@ import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Built-in modifier effect: every {@value #SPAWN_INTERVAL_TICKS} ticks a wave of
- * anvils is spawned at random positions within {@value #SPAWN_RADIUS} blocks of
- * the world origin (0, 0).
+ * anvil blocks is placed in mid-air within {@value #SPAWN_RADIUS} blocks of the world
+ * origin (0, 0).  Because ANVIL is a gravity-affected block, the server immediately
+ * converts it into a naturally-falling entity that carries the vanilla fall-damage
+ * values (2 HP / block, max 40 HP) — no NMS or reflection required.
  *
- * <p>Fall damage is applied via NMS because the Bukkit 1.21.1 API does not expose
- * {@code setFallDamageAmount} / {@code setMaxDamage} on {@link FallingBlock}.
+ * <p>Landed anvils become solid ANVIL blocks on the ground and are removed
+ * automatically by the world-cleaning step at the end of each round.
  */
 public class AnvilRainEffect implements ModifierManager.ModifierEffect {
 
-    /** Ticks between each wave of anvil spawns (40 t = 2 s). */
+    /** Ticks between each wave (40 t = 2 s). */
     private static final int    SPAWN_INTERVAL_TICKS = 40;
     /** Radius (blocks) from the world origin within which anvils are randomly placed. */
     private static final double SPAWN_RADIUS         = 25.0;
-    /** Absolute Y at which every anvil is spawned. */
+    /** Y at which each anvil block is placed; it then falls from there. */
     private static final int    SPAWN_Y              = 100;
     /** Anvils spawned per active (non-spectator) player each wave. */
     private static final int    ANVILS_PER_PLAYER    = 8;
@@ -60,28 +59,23 @@ public class AnvilRainEffect implements ModifierManager.ModifierEffect {
                     .toList();
             if (active.isEmpty()) return;
 
-            ThreadLocalRandom rng    = ThreadLocalRandom.current();
-            int               spawnY = Math.min(SPAWN_Y, world.getMaxHeight() - 1);
-            int               count  = Math.max(ANVILS_MIN, active.size() * ANVILS_PER_PLAYER);
+            ThreadLocalRandom rng   = ThreadLocalRandom.current();
+            int spawnY              = Math.min(SPAWN_Y, world.getMaxHeight() - 1);
+            int count               = Math.max(ANVILS_MIN, active.size() * ANVILS_PER_PLAYER);
 
             for (int i = 0; i < count; i++) {
+                // Uniform random point inside a circle via rejection sampling
                 double x, z;
                 do {
                     x = rng.nextDouble(-SPAWN_RADIUS, SPAWN_RADIUS);
                     z = rng.nextDouble(-SPAWN_RADIUS, SPAWN_RADIUS);
                 } while (x * x + z * z > SPAWN_RADIUS * SPAWN_RADIUS);
 
-                FallingBlock anvil = world.spawnFallingBlock(
-                        new Location(world, x, spawnY, z),
-                        Material.ANVIL.createBlockData());
-                anvil.setDropItem(false);
-                anvil.setHurtEntities(true);
-
-                // Bukkit 1.21.1 does not expose fall-damage setters on FallingBlock;
-                // set the NMS fields directly (Mojang-mapped: hurtEntities, fallDamageAmount, fallDamageMax).
-                FallingBlockEntity nms = ((CraftFallingBlock) anvil).getHandle();
-                nms.fallDamageAmount = 2.0f;  // 2 HP per block fallen
-                nms.fallDamageMax    = 40;    // cap at 40 HP (20 hearts)
+                // Place an ANVIL block in the air with physics enabled.
+                // ANVIL is gravity-affected, so the server immediately converts it into
+                // a FallingBlockEntity that uses vanilla damage (2 HP/block, max 40 HP).
+                Block block = world.getBlockAt((int) Math.floor(x), spawnY, (int) Math.floor(z));
+                block.setType(Material.ANVIL, true);
             }
         }, SPAWN_INTERVAL_TICKS, SPAWN_INTERVAL_TICKS);
 
