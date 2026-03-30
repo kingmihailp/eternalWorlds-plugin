@@ -37,9 +37,8 @@ commands:
     usage: /setnpcitems <id> <slot>
     permission: eternalworlds.npc.admin
   modifiers:
-    description: Select a game modifier during the countdown phase of a dynamic-delay game
+    description: Manage game modifiers during the countdown phase
     usage: /modifiers <name|list|clear>
-    permission: eternalworlds.portal.admin
 
 permissions:
   eternalworlds.portal.admin:
@@ -53,4 +52,13 @@ permissions:
     default: true
   eternalworlds.npc.admin:
     description: Full access to NPC management (spawn, remove, configure)
+    default: op
+  eternalworlds.modifier.list:
+    description: View the list of available game modifiers
+    default: op
+  eternalworlds.modifier.vote:
+    description: Vote for a game modifier during the countdown phase
+    default: op
+  eternalworlds.modifier.clear:
+    description: Clear the current modifier vote during the countdown phase
     default: op

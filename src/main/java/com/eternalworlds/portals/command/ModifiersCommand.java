@@ -50,18 +50,17 @@ public class ModifiersCommand implements CommandExecutor, TabCompleter {
 
         String sub = args[0].toLowerCase();
 
-        if (!player.hasPermission("eternalworlds.portal.admin")) {
-            player.sendMessage(ColorUtil.parse("&cУ вас нет прав для использования этой команды."));
-            return true;
-        }
-
-        // /modifiers list — available from any location
+        // /modifiers list
         if (sub.equals("list")) {
+            if (!player.hasPermission("eternalworlds.modifier.list")) {
+                player.sendMessage(ColorUtil.parse("&cУ вас нет прав для просмотра модификаторов."));
+                return true;
+            }
             sendModifierList(player);
             return true;
         }
 
-        // Admin voting commands require the player to be in a countdown world
+        // All other subcommands require the player to be in a countdown world
         String worldName = player.getWorld().getName();
         String portalKey = plugin.getDynamicDelayManager().getPortalInCountdownForWorld(worldName);
         if (portalKey == null) {
@@ -71,17 +70,26 @@ public class ModifiersCommand implements CommandExecutor, TabCompleter {
         }
 
         if (sub.equals("clear") || sub.equals("none")) {
+            if (!player.hasPermission("eternalworlds.modifier.clear")) {
+                player.sendMessage(ColorUtil.parse("&cУ вас нет прав для сброса модификатора."));
+                return true;
+            }
             boolean had = plugin.getModifierManager().clearVote(portalKey, player.getUniqueId());
             if (had) {
-                player.sendMessage(ColorUtil.parse("&7Ваш голос &cотменён&7."));
+                player.sendMessage(ColorUtil.parse("&7Голос &cотменён&7."));
                 broadcastVoteCounts(worldName, portalKey);
             } else {
-                player.sendMessage(ColorUtil.parse("&7Вы ещё не голосовали за модификатор."));
+                player.sendMessage(ColorUtil.parse("&7Голос за модификатор ещё не был отдан."));
             }
             return true;
         }
 
         // Vote for a modifier by name
+        if (!player.hasPermission("eternalworlds.modifier.vote")) {
+            player.sendMessage(ColorUtil.parse("&cУ вас нет прав для выбора модификатора."));
+            return true;
+        }
+
         ModifierManager.Modifier modifier = plugin.getModifierManager().getModifier(sub);
         if (modifier == null) {
             player.sendMessage(ColorUtil.parse("&cМодификатор &f" + args[0]
