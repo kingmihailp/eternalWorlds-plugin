@@ -12,14 +12,17 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Manages game modifiers that can be applied to a dynamic-delay game
  * during the COUNTDOWN phase.
  *
  * Modifier definitions are persisted in {@code <plugin-folder>/modifiers.yml}.
- * The currently-selected modifier per portal is kept in memory only —
- * it is a per-round choice and does not need to survive restarts.
+ * During the COUNTDOWN phase players vote for a modifier; the one with the
+ * most votes is applied when the game starts.  Votes are kept in memory only
+ * and are cleared automatically after each round.
  *
  * YAML structure:
  * <pre>
@@ -65,11 +68,11 @@ public class ModifierManager {
     private final File                file;
 
     /** modifier name (lower-case) → definition, insertion-ordered */
-    private final Map<String, Modifier>       modifiers  = new LinkedHashMap<>();
-    /** portal key (lower-case) → selected modifier name for the current round */
-    private final Map<String, String>         selections = new HashMap<>();
+    private final Map<String, Modifier>             modifiers = new LinkedHashMap<>();
+    /** portal key (lower-case) → { playerUUID → voted modifier name (lower-case) } */
+    private final Map<String, Map<UUID, String>>    votes     = new HashMap<>();
     /** modifier name (lower-case) → optional code-based effect */
-    private final Map<String, ModifierEffect> effects    = new HashMap<>();
+    private final Map<String, ModifierEffect>       effects   = new HashMap<>();
 
     public ModifierManager(EternalWorldsPlugin plugin) {
         this.plugin = plugin;
@@ -152,27 +155,84 @@ public class ModifierManager {
         return effects.get(modifierName.toLowerCase());
     }
 
-    // ── Per-round selection ──────────────────────────────────────────────────
+    // ── Per-round voting ─────────────────────────────────────────────────────
 
     /**
-     * Records the chosen modifier for the current round of the given portal.
-     * Overwrites any previous selection.
+     * Records or updates a player's vote for the given portal round.
+     *
+     * @return the modifier name the player previously voted for, or {@code null}
+     *         if this is a new vote
      */
-    public void setSelection(String portalKey, String modifierName) {
-        selections.put(portalKey.toLowerCase(), modifierName.toLowerCase());
+    public String castVote(String portalKey, UUID playerId, String modifierName) {
+        return votes.computeIfAbsent(portalKey.toLowerCase(), k -> new HashMap<>())
+                    .put(playerId, modifierName.toLowerCase());
     }
 
-    /** Removes any modifier selection for the given portal. */
+    /**
+     * Removes a player's vote for the given portal round.
+     *
+     * @return {@code true} if a vote was removed, {@code false} if the player
+     *         had not voted
+     */
+    public boolean clearVote(String portalKey, UUID playerId) {
+        Map<UUID, String> portalVotes = votes.get(portalKey.toLowerCase());
+        if (portalVotes == null) return false;
+        return portalVotes.remove(playerId) != null;
+    }
+
+    /**
+     * Returns the modifier name the given player voted for, or {@code null} if
+     * they have not voted.
+     */
+    public String getPlayerVote(String portalKey, UUID playerId) {
+        Map<UUID, String> portalVotes = votes.get(portalKey.toLowerCase());
+        return portalVotes != null ? portalVotes.get(playerId) : null;
+    }
+
+    /**
+     * Returns the vote counts for every modifier that received at least one vote,
+     * sorted by count descending.  The map is insertion-ordered (LinkedHashMap).
+     */
+    public Map<String, Integer> getVoteCounts(String portalKey) {
+        Map<UUID, String> portalVotes = votes.get(portalKey.toLowerCase());
+        if (portalVotes == null || portalVotes.isEmpty()) return Collections.emptyMap();
+        Map<String, Integer> raw = new HashMap<>();
+        for (String modName : portalVotes.values()) {
+            raw.merge(modName, 1, Integer::sum);
+        }
+        return raw.entrySet().stream()
+                .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+                .collect(Collectors.toMap(
+                        Map.Entry::getKey, Map.Entry::getValue,
+                        (a, b) -> a, LinkedHashMap::new));
+    }
+
+    /**
+     * Returns the {@link Modifier} that received the most votes for the given portal
+     * round, or {@code null} if no votes have been cast or the winning name is no
+     * longer registered.  Ties are broken by whichever modifier appears first in
+     * the sorted (descending) vote-count map.
+     */
+    public Modifier getWinner(String portalKey) {
+        Map<String, Integer> counts = getVoteCounts(portalKey);
+        if (counts.isEmpty()) return null;
+        String winnerName = counts.keySet().iterator().next();
+        return modifiers.get(winnerName);
+    }
+
+    /**
+     * Clears all player votes for the given portal round.
+     * Called automatically after each game starts or the countdown is cancelled.
+     */
+    public void clearAllVotes(String portalKey) {
+        votes.remove(portalKey.toLowerCase());
+    }
+
+    /**
+     * Alias for {@link #clearAllVotes(String)} — kept so that existing call-sites
+     * in {@code DynamicDelayManager} continue to compile without changes.
+     */
     public void clearSelection(String portalKey) {
-        selections.remove(portalKey.toLowerCase());
-    }
-
-    /**
-     * Returns the selected {@link Modifier} for the given portal's current round,
-     * or {@code null} if nothing is selected or the stored name no longer exists.
-     */
-    public Modifier getSelection(String portalKey) {
-        String name = selections.get(portalKey.toLowerCase());
-        return name != null ? modifiers.get(name) : null;
+        clearAllVotes(portalKey);
     }
 }

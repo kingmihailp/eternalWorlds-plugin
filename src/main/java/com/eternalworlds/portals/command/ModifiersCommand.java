@@ -13,25 +13,20 @@ import org.bukkit.util.StringUtil;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 /**
  * /modifiers <name|list|clear>
  *
- * Lets administrators choose which game modifier applies to the current
- * dynamic-delay game round.
+ * Lets players in a game world vote for a modifier during the COUNTDOWN phase.
+ * The modifier with the most votes is applied when the game starts.
  *
  * Restrictions:
- *  - Sender must be a player with {@code eternalworlds.portal.admin}.
- *  - The player's current world must have an active dynamic-delay portal
- *    that is presently in the COUNTDOWN phase.
- *  - Exception: {@code /modifiers list} works from any world and location.
- *
- * The selected modifier is applied (its console commands are dispatched and
- * a chat announcement is sent to all players in the game world) the moment
- * the countdown finishes and the game transitions to GAME_RUNNING.
- * The selection is cleared automatically after it is applied or if the
- * countdown is interrupted (player count drops below 2).
+ *  - /modifiers list   works from any world.
+ *  - /modifiers <name> and /modifiers clear require the player to be in a world
+ *    whose portal is currently in the COUNTDOWN phase.
  */
 public class ModifiersCommand implements CommandExecutor, TabCompleter {
 
@@ -48,11 +43,6 @@ public class ModifiersCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
-        if (!player.hasPermission("eternalworlds.portal.admin")) {
-            player.sendMessage(ColorUtil.parse("&cУ вас нет прав для использования этой команды."));
-            return true;
-        }
-
         if (args.length == 0) {
             player.sendMessage(ColorUtil.parse("&eИспользование: &f/" + label + " <название|list|clear>"));
             return true;
@@ -60,14 +50,13 @@ public class ModifiersCommand implements CommandExecutor, TabCompleter {
 
         String sub = args[0].toLowerCase();
 
-        // /modifiers list is available from any location
+        // /modifiers list — available from any location
         if (sub.equals("list")) {
             sendModifierList(player);
             return true;
         }
 
-        // All other sub-commands require the player to be in a game world
-        // that is currently counting down
+        // Voting commands require the player to be in a countdown world
         String worldName = player.getWorld().getName();
         String portalKey = plugin.getDynamicDelayManager().getPortalInCountdownForWorld(worldName);
         if (portalKey == null) {
@@ -77,47 +66,83 @@ public class ModifiersCommand implements CommandExecutor, TabCompleter {
         }
 
         if (sub.equals("clear") || sub.equals("none")) {
-            plugin.getModifierManager().clearSelection(portalKey);
-            broadcastToWorld(worldName, ColorUtil.parse("&7Модификатор для текущей игры &cотменён&7."));
+            boolean had = plugin.getModifierManager().clearVote(portalKey, player.getUniqueId());
+            if (had) {
+                player.sendMessage(ColorUtil.parse("&7Ваш голос &cотменён&7."));
+                broadcastVoteCounts(worldName, portalKey);
+            } else {
+                player.sendMessage(ColorUtil.parse("&7Вы ещё не голосовали за модификатор."));
+            }
             return true;
         }
 
-        // Select a modifier by name
+        // Vote for a modifier by name
         ModifierManager.Modifier modifier = plugin.getModifierManager().getModifier(sub);
         if (modifier == null) {
             player.sendMessage(ColorUtil.parse("&cМодификатор &f" + args[0]
-                    + " &cне найден. Используйте &f/" + label + " list &cдля просмотра списка."));
+                    + " &cне найден. Используйте &f/" + label + " list &cдля просмотра."));
             return true;
         }
 
-        plugin.getModifierManager().setSelection(portalKey, modifier.name());
-
-        String announcement = ColorUtil.parse("&6Модификатор игры установлен: " + modifier.displayName());
-        broadcastToWorld(worldName, announcement);
-        if (!modifier.description().isEmpty()) {
-            broadcastToWorld(worldName, ColorUtil.parse("&7" + modifier.description()));
+        String prevVote = plugin.getModifierManager().castVote(portalKey, player.getUniqueId(), modifier.name());
+        if (prevVote == null) {
+            player.sendMessage(ColorUtil.parse("&aВы проголосовали за: " + modifier.displayName() + "&a!"));
+        } else {
+            ModifierManager.Modifier prev = plugin.getModifierManager().getModifier(prevVote);
+            String prevDisplay = prev != null ? prev.displayName() : prevVote;
+            player.sendMessage(ColorUtil.parse(
+                    "&eВаш голос изменён: " + prevDisplay + " &e→ " + modifier.displayName() + "&e!"));
         }
+
+        broadcastVoteCounts(worldName, portalKey);
         return true;
     }
 
+    /** Shows available modifiers with current vote counts (if in a countdown world). */
     private void sendModifierList(Player player) {
         Collection<ModifierManager.Modifier> all = plugin.getModifierManager().getModifiers();
         if (all.isEmpty()) {
             player.sendMessage(ColorUtil.parse("&7Нет зарегистрированных модификаторов."));
             return;
         }
+
+        String worldName = player.getWorld().getName();
+        String portalKey = plugin.getDynamicDelayManager().getPortalInCountdownForWorld(worldName);
+        Map<String, Integer> counts = portalKey != null
+                ? plugin.getModifierManager().getVoteCounts(portalKey)
+                : Collections.emptyMap();
+        String myVote = portalKey != null
+                ? plugin.getModifierManager().getPlayerVote(portalKey, player.getUniqueId())
+                : null;
+
         player.sendMessage(ColorUtil.parse("&6&lДоступные модификаторы:"));
         for (ModifierManager.Modifier m : all) {
-            String line = "&e" + m.name() + " &8— " + m.displayName();
+            int voteCount = counts.getOrDefault(m.name(), 0);
+            String votesStr = voteCount > 0 ? " &e[" + voteCount + " гол.]" : "";
+            String myMark   = m.name().equals(myVote) ? " &a✔" : "";
+            String line = "&f" + m.name() + votesStr + myMark + " &8— " + m.displayName();
             if (!m.description().isEmpty()) line += " &7(" + m.description() + ")";
             player.sendMessage(ColorUtil.parse(line));
         }
     }
 
-    private void broadcastToWorld(String worldName, String message) {
+    /** Sends current vote standings to all players in the world. */
+    private void broadcastVoteCounts(String worldName, String portalKey) {
+        Map<String, Integer> counts = plugin.getModifierManager().getVoteCounts(portalKey);
         World world = plugin.getServer().getWorld(worldName);
-        if (world == null) return;
-        for (Player p : world.getPlayers()) p.sendMessage(message);
+        if (world == null || counts.isEmpty()) return;
+
+        StringBuilder sb = new StringBuilder("&8Голосование: ");
+        boolean first = true;
+        for (Map.Entry<String, Integer> e : counts.entrySet()) {
+            ModifierManager.Modifier m = plugin.getModifierManager().getModifier(e.getKey());
+            String dn = m != null ? m.displayName() : e.getKey();
+            if (!first) sb.append("&8, ");
+            sb.append(dn).append(" &8— &f").append(e.getValue()).append(" &8гол.");
+            first = false;
+        }
+        String msg = ColorUtil.parse(sb.toString());
+        for (Player p : world.getPlayers()) p.sendMessage(msg);
     }
 
     @Override

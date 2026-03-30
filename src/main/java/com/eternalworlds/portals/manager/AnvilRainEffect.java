@@ -41,6 +41,10 @@ public class AnvilRainEffect implements ModifierManager.ModifierEffect {
     private static final double SPAWN_RADIUS         = 50.0;
     /** Absolute Y at which every anvil is spawned (high enough to be visible as it falls). */
     private static final int    SPAWN_Y              = 100;
+    /** How many anvils to spawn per active player each wave. */
+    private static final int    ANVILS_PER_PLAYER    = 5;
+    /** Minimum anvils per wave regardless of player count. */
+    private static final int    ANVILS_MIN           = 12;
 
     private final EternalWorldsPlugin     plugin;
     /** worldName (lower-case) → active spawner task */
@@ -68,8 +72,9 @@ public class AnvilRainEffect implements ModifierManager.ModifierEffect {
             ThreadLocalRandom rng = ThreadLocalRandom.current();
             int spawnY = Math.min(SPAWN_Y, world.getMaxHeight() - 1);
 
-            // Spawn one anvil per active player, each at a random position in the radius
-            for (int i = 0; i < active.size(); i++) {
+            // Wave size scales with player count but never drops below ANVILS_MIN
+            int waveSize = Math.max(ANVILS_MIN, active.size() * ANVILS_PER_PLAYER);
+            for (int i = 0; i < waveSize; i++) {
                 // Uniform random point inside a circle via rejection sampling
                 double x, z;
                 do {

@@ -559,30 +559,44 @@ public class DynamicDelayManager {
             dispatchCommand(dc.gameStartCommand(), key, gameWorldName);
         }
 
-        // Apply the selected modifier (if any), announce it, then clear the selection.
-        ModifierManager.Modifier selectedModifier = plugin.getModifierManager().getSelection(key);
-        if (selectedModifier != null) {
-            World gw = plugin.getServer().getWorld(gameWorldName);
+        // Determine winner of the modifier vote, announce results, apply winner, clear votes.
+        ModifierManager.Modifier winner = plugin.getModifierManager().getWinner(key);
+        World gw = plugin.getServer().getWorld(gameWorldName);
+
+        // Always show vote results if anyone voted
+        java.util.Map<String, Integer> voteCounts = plugin.getModifierManager().getVoteCounts(key);
+        if (!voteCounts.isEmpty() && gw != null) {
+            String title = ColorUtil.parse("&6&l⚡ Итоги голосования за модификатор:");
+            for (Player p : gw.getPlayers()) p.sendMessage(title);
+            for (java.util.Map.Entry<String, Integer> entry : voteCounts.entrySet()) {
+                ModifierManager.Modifier m = plugin.getModifierManager().getModifier(entry.getKey());
+                String dn   = m != null ? m.displayName() : entry.getKey();
+                String line = ColorUtil.parse("  " + dn + " &8— &e" + entry.getValue() + " &7гол.");
+                for (Player p : gw.getPlayers()) p.sendMessage(line);
+            }
+        }
+
+        if (winner != null) {
             if (gw != null) {
-                String header = ColorUtil.parse("&6&lМодификатор игры: " + selectedModifier.displayName());
+                String header = ColorUtil.parse("&6&lМодификатор этой игры: " + winner.displayName() + "&6&l!");
                 for (Player p : gw.getPlayers()) p.sendMessage(header);
-                if (!selectedModifier.description().isEmpty()) {
-                    String desc = ColorUtil.parse("&7" + selectedModifier.description());
+                if (!winner.description().isEmpty()) {
+                    String desc = ColorUtil.parse("&7" + winner.description());
                     for (Player p : gw.getPlayers()) p.sendMessage(desc);
                 }
             }
-            for (String cmd : selectedModifier.commands()) {
+            for (String cmd : winner.commands()) {
                 dispatchCommand(cmd, key, gameWorldName);
             }
             // Start the built-in code effect for this modifier (if one is registered)
             ModifierManager.ModifierEffect effect =
-                    plugin.getModifierManager().getEffect(selectedModifier.name());
+                    plugin.getModifierManager().getEffect(winner.name());
             if (effect != null) {
                 effect.start(gameWorldName, key);
                 activeEffects.put(key, effect);
             }
-            plugin.getModifierManager().clearSelection(key);
         }
+        plugin.getModifierManager().clearSelection(key);
 
         String closeMsg = plugin.getMinigameConfigManager().getCloseMessage(key);
         if (closeMsg != null) {
