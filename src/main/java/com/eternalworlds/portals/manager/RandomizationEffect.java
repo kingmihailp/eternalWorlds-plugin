@@ -53,7 +53,7 @@ public class RandomizationEffect implements ModifierManager.ModifierEffect, List
             Material.OAK_LOG,          Material.SAND,             Material.GRAVEL,
             Material.FLINT,            Material.CLAY_BALL,        Material.BOWL,
             Material.NETHER_BRICK,     Material.CHORUS_FRUIT,     Material.HONEYCOMB,
-            Material.PHANTOM_MEMBRANE, Material.NAUTILUS_SHELL,   Material.SCUTE,
+            Material.PHANTOM_MEMBRANE, Material.NAUTILUS_SHELL,   Material.TURTLE_SCUTE,
     };
 
     private final EternalWorldsPlugin plugin;
