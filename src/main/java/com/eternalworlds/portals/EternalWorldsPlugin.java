@@ -10,7 +10,9 @@ import com.eternalworlds.portals.listener.PortalListener;
 import com.eternalworlds.portals.listener.ProjectilesListener;
 import com.eternalworlds.portals.listener.StatisticsListener;
 import com.eternalworlds.portals.manager.AnvilRainEffect;
+import com.eternalworlds.portals.manager.FloorIsLavaEffect;
 import com.eternalworlds.portals.manager.RandomizationEffect;
+import com.eternalworlds.portals.manager.SwapperEffect;
 import com.eternalworlds.portals.manager.BossManager;
 import com.eternalworlds.portals.manager.DynamicDelayManager;
 import com.eternalworlds.portals.manager.ItemRandomizationManager;
@@ -39,6 +41,8 @@ public final class EternalWorldsPlugin extends JavaPlugin {
     private ModifierManager          modifierManager;
     private AnvilRainEffect          anvilRainEffect;
     private RandomizationEffect      randomizationEffect;
+    private SwapperEffect            swapperEffect;
+    private FloorIsLavaEffect        floorIsLavaEffect;
     private PortalSchedulerManager   portalSchedulerManager;
     private DynamicDelayManager      dynamicDelayManager;
     private PlayerFreezeManager      playerFreezeManager;
@@ -67,6 +71,10 @@ public final class EternalWorldsPlugin extends JavaPlugin {
         modifierManager.registerEffect("anvil-rain", anvilRainEffect);
         this.randomizationEffect       = new RandomizationEffect(this);
         modifierManager.registerEffect("randomization", randomizationEffect);
+        this.swapperEffect             = new SwapperEffect(this);
+        modifierManager.registerEffect("swapper", swapperEffect);
+        this.floorIsLavaEffect         = new FloorIsLavaEffect(this);
+        modifierManager.registerEffect("floor-is-lava", floorIsLavaEffect);
         this.portalSchedulerManager    = new PortalSchedulerManager(this);
         this.playerFreezeManager       = new PlayerFreezeManager();
         this.dynamicDelayManager       = new DynamicDelayManager(this);
@@ -120,6 +128,8 @@ public final class EternalWorldsPlugin extends JavaPlugin {
     public void onDisable() {
         if (anvilRainEffect      != null) anvilRainEffect.stopAll();
         if (randomizationEffect  != null) randomizationEffect.stopAll();
+        if (swapperEffect        != null) swapperEffect.stopAll();
+        if (floorIsLavaEffect    != null) floorIsLavaEffect.stopAll();
         if (dynamicDelayManager != null) dynamicDelayManager.cancelAll();
         portalSchedulerManager.cancelAll();
         itemRandomizationManager.cancelAll();

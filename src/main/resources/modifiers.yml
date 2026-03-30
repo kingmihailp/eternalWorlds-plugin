@@ -22,3 +22,11 @@ modifiers:
     display-name: "&#AA00FF&lРандомизация"
     description: "Весь дроп с блоков и мобов перемешан!"
     commands: []
+  swapper:
+    display-name: "&#FF55FF&lСваппер"
+    description: "Каждые 15 секунд игроки меняются местами!"
+    commands: []
+  floor-is-lava:
+    display-name: "&#FF4400&lПол — это лава"
+    description: "Лава медленно поднимается снизу!"
+    commands: []
