@@ -13,8 +13,8 @@ import java.util.Map;
 
 /**
  * Built-in modifier effect: lava rises from Y={@value #LAVA_START_Y} up to
- * Y={@value #LAVA_END_Y} layer by layer within a {@value #LAVA_RADIUS}-block
- * radius of the world origin (0, 0).
+ * Y={@value #LAVA_END_Y} layer by layer within a square of
+ * {@value #LAVA_HALF}×{@value #LAVA_HALF} blocks from the world origin (0, 0).
  *
  * <p>One layer is filled every {@value #LAYER_INTERVAL_TICKS} ticks.  Only
  * empty (air) blocks are replaced — solid blocks such as bedrock columns are
@@ -29,8 +29,8 @@ public class FloorIsLavaEffect implements ModifierManager.ModifierEffect {
     private static final int LAVA_START_Y       = -5;
     /** Highest Y level filled by lava. */
     private static final int LAVA_END_Y         = 77;
-    /** Radius (blocks) from world origin in which lava is placed. */
-    private static final int LAVA_RADIUS        = 25;
+    /** Half-side of the square (blocks) from world origin in which lava is placed (30×30). */
+    private static final int LAVA_HALF          = 15;
     /** Ticks between each rising layer (80 t = 4 s). */
     private static final int LAYER_INTERVAL_TICKS = 80;
     /** Announce the current lava level every N layers. */
@@ -60,11 +60,9 @@ public class FloorIsLavaEffect implements ModifierManager.ModifierEffect {
             int y = currentY.getOrDefault(worldName.toLowerCase(), LAVA_START_Y);
             if (y > LAVA_END_Y) return; // fully risen — keep task alive but do nothing
 
-            // Fill one lava layer inside the circle
-            int radiusSq = LAVA_RADIUS * LAVA_RADIUS;
-            for (int x = -LAVA_RADIUS; x <= LAVA_RADIUS; x++) {
-                for (int z = -LAVA_RADIUS; z <= LAVA_RADIUS; z++) {
-                    if (x * x + z * z > radiusSq) continue;
+            // Fill one lava layer inside the 30×30 square
+            for (int x = -LAVA_HALF; x <= LAVA_HALF; x++) {
+                for (int z = -LAVA_HALF; z <= LAVA_HALF; z++) {
                     Block block = world.getBlockAt(x, y, z);
                     if (block.isEmpty()) {
                         block.setType(Material.LAVA, false);
