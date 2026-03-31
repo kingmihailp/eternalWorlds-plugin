@@ -1,7 +1,6 @@
 package com.eternalworlds.portals.manager;
 
 import com.eternalworlds.portals.EternalWorldsPlugin;
-import com.eternalworlds.portals.util.ColorUtil;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
@@ -85,8 +84,6 @@ public class FairPlayEffect implements ModifierManager.ModifierEffect {
 
             for (Player player : players) {
                 player.getInventory().addItem(stack.clone());
-                player.sendMessage(ColorUtil.parse(
-                        "&6[Честная игра] &fВсе получают: &e" + chosen.name().toLowerCase().replace('_', ' ')));
             }
 
         }, INTERVAL_TICKS, INTERVAL_TICKS);
