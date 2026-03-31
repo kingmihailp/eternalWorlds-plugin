@@ -42,3 +42,7 @@ modifiers:
     display-name: "&#00AA00&lЧестная игра"
     description: "Каждые 4 секунды всем игрокам выдаётся один и тот же рандомный предмет!"
     commands: []
+  overflow:
+    display-name: "&#FFAA00&lПереполнение"
+    description: "Вместо одного предмета выпадает сразу 64!"
+    commands: []
