@@ -14,6 +14,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 
+
+
 /**
  * Built-in modifier effect: every {@value #INTERVAL_TICKS} ticks (4 seconds)
  * a random item is chosen and 64 of it are given to every player in the game world.
@@ -70,22 +72,15 @@ public class OverflowEffect implements ModifierManager.ModifierEffect {
             List<Player> players = world.getPlayers();
             if (players.isEmpty()) return;
 
-            Material chosen = ITEM_POOL[ThreadLocalRandom.current().nextInt(ITEM_POOL.length)];
-            int amount = Math.min(AMOUNT, chosen.getMaxStackSize());
-            ItemStack stack = new ItemStack(chosen, amount);
-
-            // If AMOUNT > maxStackSize, fill multiple slots
-            int remaining = AMOUNT;
-            List<ItemStack> stacks = new ArrayList<>();
-            while (remaining > 0) {
-                int give = Math.min(remaining, chosen.getMaxStackSize());
-                stacks.add(new ItemStack(chosen, give));
-                remaining -= give;
-            }
-
+            ThreadLocalRandom rng = ThreadLocalRandom.current();
             for (Player player : players) {
-                for (ItemStack s : stacks) {
-                    player.getInventory().addItem(s.clone());
+                // Each player gets their own random item — 64 of it
+                Material chosen = ITEM_POOL[rng.nextInt(ITEM_POOL.length)];
+                int remaining = AMOUNT;
+                while (remaining > 0) {
+                    int give = Math.min(remaining, chosen.getMaxStackSize());
+                    player.getInventory().addItem(new ItemStack(chosen, give));
+                    remaining -= give;
                 }
             }
 
