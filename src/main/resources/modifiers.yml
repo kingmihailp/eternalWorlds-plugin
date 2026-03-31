@@ -42,6 +42,10 @@ modifiers:
     display-name: "&#00AA00&lЧестная игра"
     description: "Каждые 4 секунды всем игрокам выдаётся один и тот же рандомный предмет!"
     commands: []
+  pushers:
+    display-name: "&#55FFFF&lПоталкушки"
+    description: "Палка x100 откидывание, элитры и заряд ветра каждые 4 секунды!"
+    commands: []
   overflow:
     display-name: "&#FFAA00&lПереполнение"
     description: "Вместо одного предмета выпадает сразу 64!"

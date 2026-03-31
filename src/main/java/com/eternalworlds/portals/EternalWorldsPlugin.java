@@ -15,6 +15,7 @@ import com.eternalworlds.portals.manager.EffectFeverEffect;
 import com.eternalworlds.portals.manager.FairPlayEffect;
 import com.eternalworlds.portals.manager.FloorIsLavaEffect;
 import com.eternalworlds.portals.manager.OverflowEffect;
+import com.eternalworlds.portals.manager.PushersEffect;
 import com.eternalworlds.portals.manager.RandomizationEffect;
 import com.eternalworlds.portals.manager.SwapperEffect;
 import com.eternalworlds.portals.manager.BossManager;
@@ -48,6 +49,7 @@ public final class EternalWorldsPlugin extends JavaPlugin {
     private EffectFeverEffect        effectFeverEffect;
     private FairPlayEffect           fairPlayEffect;
     private OverflowEffect           overflowEffect;
+    private PushersEffect            pushersEffect;
     private RandomizationEffect      randomizationEffect;
     private SwapperEffect            swapperEffect;
     private FloorIsLavaEffect        floorIsLavaEffect;
@@ -91,6 +93,8 @@ public final class EternalWorldsPlugin extends JavaPlugin {
         modifierManager.registerEffect("fair-play", fairPlayEffect);
         this.overflowEffect            = new OverflowEffect(this);
         modifierManager.registerEffect("overflow", overflowEffect);
+        this.pushersEffect             = new PushersEffect(this);
+        modifierManager.registerEffect("pushers", pushersEffect);
         this.portalSchedulerManager    = new PortalSchedulerManager(this);
         this.playerFreezeManager       = new PlayerFreezeManager();
         this.dynamicDelayManager       = new DynamicDelayManager(this);
@@ -148,6 +152,7 @@ public final class EternalWorldsPlugin extends JavaPlugin {
         if (effectFeverEffect    != null) effectFeverEffect.stopAll();
         if (fairPlayEffect       != null) fairPlayEffect.stopAll();
         if (overflowEffect       != null) overflowEffect.stopAll();
+        if (pushersEffect        != null) pushersEffect.stopAll();
         if (randomizationEffect  != null) randomizationEffect.stopAll();
         if (swapperEffect        != null) swapperEffect.stopAll();
         if (floorIsLavaEffect    != null) floorIsLavaEffect.stopAll();
