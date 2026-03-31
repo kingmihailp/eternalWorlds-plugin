@@ -11,6 +11,7 @@ import com.eternalworlds.portals.listener.ProjectilesListener;
 import com.eternalworlds.portals.listener.StatisticsListener;
 import com.eternalworlds.portals.manager.AnvilRainEffect;
 import com.eternalworlds.portals.manager.ChaosEffect;
+import com.eternalworlds.portals.manager.EffectFeverEffect;
 import com.eternalworlds.portals.manager.FairPlayEffect;
 import com.eternalworlds.portals.manager.FloorIsLavaEffect;
 import com.eternalworlds.portals.manager.RandomizationEffect;
@@ -43,6 +44,7 @@ public final class EternalWorldsPlugin extends JavaPlugin {
     private ModifierManager          modifierManager;
     private AnvilRainEffect          anvilRainEffect;
     private ChaosEffect              chaosEffect;
+    private EffectFeverEffect        effectFeverEffect;
     private FairPlayEffect           fairPlayEffect;
     private RandomizationEffect      randomizationEffect;
     private SwapperEffect            swapperEffect;
@@ -81,6 +83,8 @@ public final class EternalWorldsPlugin extends JavaPlugin {
         modifierManager.registerEffect("floor-is-lava", floorIsLavaEffect);
         this.chaosEffect               = new ChaosEffect(this);
         modifierManager.registerEffect("chaos", chaosEffect);
+        this.effectFeverEffect         = new EffectFeverEffect(this);
+        modifierManager.registerEffect("effect-fever", effectFeverEffect);
         this.fairPlayEffect            = new FairPlayEffect(this);
         modifierManager.registerEffect("fair-play", fairPlayEffect);
         this.portalSchedulerManager    = new PortalSchedulerManager(this);
@@ -108,6 +112,7 @@ public final class EternalWorldsPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new ProjectilesListener(this), this);
         getServer().getPluginManager().registerEvents(new BossListener(this), this);
         getServer().getPluginManager().registerEvents(randomizationEffect, this);
+        getServer().getPluginManager().registerEvents(effectFeverEffect, this);
 
         NpcCommand npcExecutor = new NpcCommand(this);
         for (String cmd : new String[]{"npc", "spawnnpc", "removenpc", "npcattributes", "setnpcitems"}) {
@@ -136,6 +141,7 @@ public final class EternalWorldsPlugin extends JavaPlugin {
     public void onDisable() {
         if (anvilRainEffect      != null) anvilRainEffect.stopAll();
         if (chaosEffect          != null) chaosEffect.stopAll();
+        if (effectFeverEffect    != null) effectFeverEffect.stopAll();
         if (fairPlayEffect       != null) fairPlayEffect.stopAll();
         if (randomizationEffect  != null) randomizationEffect.stopAll();
         if (swapperEffect        != null) swapperEffect.stopAll();

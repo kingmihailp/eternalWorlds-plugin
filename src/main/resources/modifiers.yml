@@ -34,6 +34,10 @@ modifiers:
     display-name: "&#FF0000&lРежим хаоса"
     description: "Рандомные блоки и мобы появляются в мире!"
     commands: []
+  effect-fever:
+    display-name: "&#FF00FF&lЛихорадка эффектов"
+    description: "Каждые 4 секунды на игроков накладывается случайный эффект!"
+    commands: []
   fair-play:
     display-name: "&#00AA00&lЧестная игра"
     description: "Каждые 4 секунды всем игрокам выдаётся один и тот же рандомный предмет!"
