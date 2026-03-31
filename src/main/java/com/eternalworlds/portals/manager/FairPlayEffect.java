@@ -70,6 +70,8 @@ public class FairPlayEffect implements ModifierManager.ModifierEffect {
     @Override
     public void start(String worldName, String portalKey) {
         stop(worldName, portalKey);
+        // Suppress the default per-player random-item distribution for this world
+        plugin.getItemRandomizationManager().stopRandomization(worldName);
 
         BukkitTask task = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
             World world = plugin.getServer().getWorld(worldName);

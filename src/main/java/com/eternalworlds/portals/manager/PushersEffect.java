@@ -33,6 +33,8 @@ public class PushersEffect implements ModifierManager.ModifierEffect {
     @Override
     public void start(String worldName, String portalKey) {
         stop(worldName, portalKey);
+        // Suppress the default per-player random-item distribution for this world
+        plugin.getItemRandomizationManager().stopRandomization(worldName);
 
         // Give starting kit immediately to all players in the world
         World world = plugin.getServer().getWorld(worldName);
