@@ -11,6 +11,7 @@ import com.eternalworlds.portals.listener.ProjectilesListener;
 import com.eternalworlds.portals.listener.StatisticsListener;
 import com.eternalworlds.portals.manager.AnvilRainEffect;
 import com.eternalworlds.portals.manager.ChaosEffect;
+import com.eternalworlds.portals.manager.FairPlayEffect;
 import com.eternalworlds.portals.manager.FloorIsLavaEffect;
 import com.eternalworlds.portals.manager.RandomizationEffect;
 import com.eternalworlds.portals.manager.SwapperEffect;
@@ -42,6 +43,7 @@ public final class EternalWorldsPlugin extends JavaPlugin {
     private ModifierManager          modifierManager;
     private AnvilRainEffect          anvilRainEffect;
     private ChaosEffect              chaosEffect;
+    private FairPlayEffect           fairPlayEffect;
     private RandomizationEffect      randomizationEffect;
     private SwapperEffect            swapperEffect;
     private FloorIsLavaEffect        floorIsLavaEffect;
@@ -79,6 +81,8 @@ public final class EternalWorldsPlugin extends JavaPlugin {
         modifierManager.registerEffect("floor-is-lava", floorIsLavaEffect);
         this.chaosEffect               = new ChaosEffect(this);
         modifierManager.registerEffect("chaos", chaosEffect);
+        this.fairPlayEffect            = new FairPlayEffect(this);
+        modifierManager.registerEffect("fair-play", fairPlayEffect);
         this.portalSchedulerManager    = new PortalSchedulerManager(this);
         this.playerFreezeManager       = new PlayerFreezeManager();
         this.dynamicDelayManager       = new DynamicDelayManager(this);
@@ -132,6 +136,7 @@ public final class EternalWorldsPlugin extends JavaPlugin {
     public void onDisable() {
         if (anvilRainEffect      != null) anvilRainEffect.stopAll();
         if (chaosEffect          != null) chaosEffect.stopAll();
+        if (fairPlayEffect       != null) fairPlayEffect.stopAll();
         if (randomizationEffect  != null) randomizationEffect.stopAll();
         if (swapperEffect        != null) swapperEffect.stopAll();
         if (floorIsLavaEffect    != null) floorIsLavaEffect.stopAll();

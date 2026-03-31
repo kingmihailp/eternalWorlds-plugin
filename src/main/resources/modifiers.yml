@@ -34,3 +34,7 @@ modifiers:
     display-name: "&#FF0000&lРежим хаоса"
     description: "Рандомные блоки и мобы появляются в мире!"
     commands: []
+  fair-play:
+    display-name: "&#00AA00&lЧестная игра"
+    description: "Каждые 4 секунды всем игрокам выдаётся один и тот же рандомный предмет!"
+    commands: []
