@@ -46,6 +46,14 @@ modifiers:
     display-name: "&#55FFFF&lПоталкушки"
     description: "Палка x100 откидывание, элитры и заряд ветра каждые 4 секунды!"
     commands: []
+  meteor-rain:
+    display-name: "&#FF4400&lМетеоритный дождь"
+    description: "Огненные метеориты падают в радиусе 25 блоков от центра мира!"
+    commands: []
+  mobification:
+    display-name: "&#55FF55&lМобификация"
+    description: "Каждые 4 секунды вместо предметов выдаются яйца призыва мобов!"
+    commands: []
   overflow:
     display-name: "&#FFAA00&lПереполнение"
     description: "Вместо одного предмета выпадает сразу 64!"

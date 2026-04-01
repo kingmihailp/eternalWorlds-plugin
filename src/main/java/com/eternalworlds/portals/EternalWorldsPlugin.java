@@ -14,6 +14,8 @@ import com.eternalworlds.portals.manager.ChaosEffect;
 import com.eternalworlds.portals.manager.EffectFeverEffect;
 import com.eternalworlds.portals.manager.FairPlayEffect;
 import com.eternalworlds.portals.manager.FloorIsLavaEffect;
+import com.eternalworlds.portals.manager.MeteorRainEffect;
+import com.eternalworlds.portals.manager.MobificationEffect;
 import com.eternalworlds.portals.manager.OverflowEffect;
 import com.eternalworlds.portals.manager.PushersEffect;
 import com.eternalworlds.portals.manager.RandomizationEffect;
@@ -48,6 +50,8 @@ public final class EternalWorldsPlugin extends JavaPlugin {
     private ChaosEffect              chaosEffect;
     private EffectFeverEffect        effectFeverEffect;
     private FairPlayEffect           fairPlayEffect;
+    private MeteorRainEffect         meteorRainEffect;
+    private MobificationEffect       mobificationEffect;
     private OverflowEffect           overflowEffect;
     private PushersEffect            pushersEffect;
     private RandomizationEffect      randomizationEffect;
@@ -91,6 +95,10 @@ public final class EternalWorldsPlugin extends JavaPlugin {
         modifierManager.registerEffect("effect-fever", effectFeverEffect);
         this.fairPlayEffect            = new FairPlayEffect(this);
         modifierManager.registerEffect("fair-play", fairPlayEffect);
+        this.meteorRainEffect          = new MeteorRainEffect(this);
+        modifierManager.registerEffect("meteor-rain", meteorRainEffect);
+        this.mobificationEffect        = new MobificationEffect(this);
+        modifierManager.registerEffect("mobification", mobificationEffect);
         this.overflowEffect            = new OverflowEffect(this);
         modifierManager.registerEffect("overflow", overflowEffect);
         this.pushersEffect             = new PushersEffect(this);
@@ -151,6 +159,8 @@ public final class EternalWorldsPlugin extends JavaPlugin {
         if (chaosEffect          != null) chaosEffect.stopAll();
         if (effectFeverEffect    != null) effectFeverEffect.stopAll();
         if (fairPlayEffect       != null) fairPlayEffect.stopAll();
+        if (meteorRainEffect     != null) meteorRainEffect.stopAll();
+        if (mobificationEffect   != null) mobificationEffect.stopAll();
         if (overflowEffect       != null) overflowEffect.stopAll();
         if (pushersEffect        != null) pushersEffect.stopAll();
         if (randomizationEffect  != null) randomizationEffect.stopAll();
