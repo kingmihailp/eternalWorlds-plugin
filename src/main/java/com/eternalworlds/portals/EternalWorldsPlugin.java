@@ -129,6 +129,7 @@ public final class EternalWorldsPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new BossListener(this), this);
         getServer().getPluginManager().registerEvents(randomizationEffect, this);
         getServer().getPluginManager().registerEvents(effectFeverEffect, this);
+        getServer().getPluginManager().registerEvents(meteorRainEffect, this);
 
         NpcCommand npcExecutor = new NpcCommand(this);
         for (String cmd : new String[]{"npc", "spawnnpc", "removenpc", "npcattributes", "setnpcitems"}) {
