@@ -610,7 +610,10 @@ public class DynamicDelayManager {
                             .replace("{world}",  gameWorldName)));
         }
 
-        if (plugin.getWorldConfigManager().isItemRandomizationEnabled(gameWorldName)) {
+        // Only start the default item distribution if no active modifier handles it itself.
+        ModifierManager.ModifierEffect activeEffect = activeEffects.get(key);
+        boolean modifierReplacesItems = activeEffect != null && activeEffect.replacesItemDistribution();
+        if (!modifierReplacesItems && plugin.getWorldConfigManager().isItemRandomizationEnabled(gameWorldName)) {
             plugin.getItemRandomizationManager().startRandomization(gameWorldName);
         }
 

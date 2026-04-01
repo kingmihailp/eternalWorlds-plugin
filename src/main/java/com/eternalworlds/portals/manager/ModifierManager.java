@@ -64,6 +64,12 @@ public class ModifierManager {
         void start(String worldName, String portalKey);
         /** Called on the main thread when the game ends or the cycle is interrupted. */
         void stop(String worldName, String portalKey);
+        /**
+         * Return {@code true} if this effect provides its own item distribution
+         * and the default {@link ItemRandomizationManager} must NOT be started
+         * alongside it.  Defaults to {@code false}.
+         */
+        default boolean replacesItemDistribution() { return false; }
     }
 
     private final EternalWorldsPlugin plugin;
